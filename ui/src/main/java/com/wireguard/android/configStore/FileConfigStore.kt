@@ -38,7 +38,7 @@ class FileConfigStore(private val context: Context) : ConfigStore {
             throw IOException(context.getString(R.string.config_delete_error, file.name))
     }
 
-    override fun enumerate(): Set<String> {
+    override suspend fun enumerate(): Set<String> {
         return context.fileList()
                 .filter { it.endsWith(".conf") }
                 .map { it.substring(0, it.length - ".conf".length) }

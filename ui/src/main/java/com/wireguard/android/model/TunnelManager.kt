@@ -26,6 +26,9 @@ import com.wireguard.android.util.ExceptionLoggers
 import com.wireguard.config.Config
 import java9.util.concurrent.CompletableFuture
 import java9.util.concurrent.CompletionStage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.withContext
 import java.util.ArrayList
 
 /**
@@ -95,11 +98,10 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
     fun getTunnelConfig(tunnel: ObservableTunnel): CompletionStage<Config> = getAsyncWorker()
             .supplyAsync { configStore.load(tunnel.name) }.thenApply(tunnel::onConfigChanged)
 
-
-    fun onCreate() {
-        getAsyncWorker().supplyAsync { configStore.enumerate() }
-                .thenAcceptBoth(getAsyncWorker().supplyAsync { getBackend().runningTunnelNames }, this::onTunnelsLoaded)
-                .whenComplete(ExceptionLoggers.E)
+    suspend fun onCreate() = withContext(Dispatchers.IO) {
+        val storedConfigs = async { configStore.enumerate() }
+        val runningTunnels = async { getBackend().runningTunnelNames }
+        onTunnelsLoaded(storedConfigs.await(), runningTunnels.await())
     }
 
     private fun onTunnelsLoaded(present: Iterable<String>, running: Collection<String>) {
