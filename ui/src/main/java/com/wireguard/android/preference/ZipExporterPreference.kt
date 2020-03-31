@@ -18,48 +18,55 @@ import com.wireguard.android.util.BiometricAuthenticator
 import com.wireguard.android.util.DownloadsFileSaver
 import com.wireguard.android.util.ErrorMessages
 import com.wireguard.android.util.FragmentUtils
-import java9.util.concurrent.CompletableFuture
-import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
  * Preference implementing a button that asynchronously exports config zips.
  */
-class ZipExporterPreference(context: Context, attrs: AttributeSet?) : Preference(context, attrs) {
+@ExperimentalCoroutinesApi
+class ZipExporterPreference(context: Context, attrs: AttributeSet?) : Preference(context, attrs), CoroutineScope {
     private var exportedFilePath: String? = null
+    override val coroutineContext
+        get() = Job() + Dispatchers.Default
 
-    private fun exportZip() {
-        Application.getTunnelManager().tunnels.thenAccept(this::exportZip)
-    }
-
-    private fun exportZip(tunnels: List<ObservableTunnel>) {
-        val futureConfigs = tunnels.map { it.configAsync.toCompletableFuture() }.toTypedArray()
-        if (futureConfigs.isEmpty()) {
+    private suspend fun exportZip(tunnels: List<ObservableTunnel>) = supervisorScope {
+        val asyncConfigs = tunnels.map { it.getConfigAsync() }.toList()
+        if (asyncConfigs.isEmpty()) {
             exportZipComplete(null, IllegalArgumentException(
                     context.getString(R.string.no_tunnels_error)))
-            return
+            return@supervisorScope
         }
-        CompletableFuture.allOf(*futureConfigs)
-                .whenComplete { _, exception ->
-                    Application.getAsyncWorker().supplyAsync {
-                        if (exception != null) throw exception
-                        val outputFile = DownloadsFileSaver.save(context, "wireguard-export.zip", "application/zip", true)
-                        try {
-                            ZipOutputStream(outputFile.outputStream).use { zip ->
-                                for (i in futureConfigs.indices) {
-                                    zip.putNextEntry(ZipEntry(tunnels[i].name + ".conf"))
-                                    zip.write(futureConfigs[i].getNow(null)!!.toWgQuickString().toByteArray(StandardCharsets.UTF_8))
-                                }
-                                zip.closeEntry()
+        try {
+            asyncConfigs.awaitAll().let {
+                val outputFile = DownloadsFileSaver.save(context, "wireguard-export.zip", "application/zip", true)
+                try {
+                    withContext(Dispatchers.IO) {
+                        ZipOutputStream(outputFile.outputStream).use { zip ->
+                            it.forEachIndexed { i, config ->
+                                zip.putNextEntry(ZipEntry("${tunnels[i].name}.conf"))
+                                zip.write(config.toWgQuickString().toByteArray(Charsets.UTF_8))
                             }
-                        } catch (e: Exception) {
-                            outputFile.delete()
-                            throw e
+                            zip.closeEntry()
                         }
-                        outputFile.fileName
-                    }.whenComplete(this::exportZipComplete)
+                    }
+                } catch (e: Exception) {
+                    outputFile.delete()
+                    throw e
                 }
+                withContext(Dispatchers.Main) { exportZipComplete(outputFile.fileName, null) }
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) { exportZipComplete(null, e) }
+        }
     }
 
     private fun exportZipComplete(filePath: String?, throwable: Throwable?) {
@@ -91,7 +98,7 @@ class ZipExporterPreference(context: Context, attrs: AttributeSet?) : Preference
                     prefActivity.ensurePermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE)) { _, grantResults ->
                         if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                             isEnabled = false
-                            exportZip()
+                            launch { exportZip(Application.getTunnelManager().getTunnelsAsync()) }
                         }
                     }
                 }

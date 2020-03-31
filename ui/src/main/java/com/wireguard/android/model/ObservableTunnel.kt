@@ -14,6 +14,8 @@ import com.wireguard.android.util.ExceptionLoggers
 import com.wireguard.config.Config
 import java9.util.concurrent.CompletableFuture
 import java9.util.concurrent.CompletionStage
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 
 /**
  * Encapsulates the volatile and nonvolatile state of a WireGuard tunnel.
@@ -77,6 +79,13 @@ class ObservableTunnel internal constructor(
             manager.getTunnelConfig(this)
         else
             CompletableFuture.completedFuture(config)
+
+    suspend fun getConfigAsync(): Deferred<Config> {
+        return if (config == null)
+            manager.getTunnelConfigAsync(this)
+        else
+            CompletableDeferred<Config>().apply { complete(config!!) }
+    }
 
     fun setConfigAsync(config: Config): CompletionStage<Config> = if (config != this.config)
         manager.setTunnelConfig(this, config)
