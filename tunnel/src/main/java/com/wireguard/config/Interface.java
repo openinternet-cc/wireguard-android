@@ -14,19 +14,18 @@ import com.wireguard.crypto.KeyPair;
 import com.wireguard.util.NonNullForAll;
 
 import java.net.InetAddress;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import androidx.annotation.Nullable;
-import java9.util.Lists;
-import java9.util.Optional;
-import java9.util.stream.Collectors;
-import java9.util.stream.StreamSupport;
 
 /**
  * Represents the configuration for a WireGuard interface (an [Interface] block). Interfaces must
@@ -223,9 +222,9 @@ public final class Interface {
         if (!addresses.isEmpty())
             sb.append("Address = ").append(Attribute.join(addresses)).append('\n');
         if (!dnsServers.isEmpty()) {
-            final List<String> dnsServerStrings = StreamSupport.stream(dnsServers)
+            final List<String> dnsServerStrings = dnsServers.stream()
                     .map(InetAddress::getHostAddress)
-                    .collect(Collectors.toUnmodifiableList());
+                    .collect(Collectors.toList());
             sb.append("DNS = ").append(Attribute.join(dnsServerStrings)).append('\n');
         }
         if (!excludedApplications.isEmpty())
@@ -339,7 +338,7 @@ public final class Interface {
         }
 
         public Builder parseExcludedApplications(final CharSequence apps) {
-            return excludeApplications(Lists.of(Attribute.split(apps)));
+            return excludeApplications(Arrays.asList(Attribute.split(apps)));
         }
 
         public Builder parseIncludedApplications(final CharSequence apps) {

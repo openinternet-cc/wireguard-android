@@ -36,13 +36,13 @@ bintray {
     user = hasProperty('BINTRAY_USER') ? getProperty('BINTRAY_USER') : System.getenv('BINTRAY_USER')
     key = hasProperty('BINTRAY_KEY') ? getProperty('BINTRAY_KEY') : System.getenv('BINTRAY_KEY')
 
-    configurations = [ 'archives' ]
+    configurations = ['archives']
 
     pkg {
         repo = 'wireguard-android'
         name = 'wireguard-android'
         userOrg = 'wireguard'
-        licenses = [ 'Apache-2.0' ]
+        licenses = ['Apache-2.0']
         vcsUrl = 'https://git.zx2c4.com/wireguard-android'
         publish = true
 

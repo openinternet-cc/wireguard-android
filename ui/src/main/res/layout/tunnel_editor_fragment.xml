@@ -113,7 +113,8 @@
                             android:hint="@string/public_key"
                             app:layout_constraintEnd_toEndOf="parent"
                             app:layout_constraintStart_toStartOf="parent"
-                            app:layout_constraintTop_toBottomOf="@+id/private_key_text_layout">
+                            app:layout_constraintTop_toBottomOf="@+id/private_key_text_layout"
+                            app:placeholderText="@string/hint_generated">
 
                             <com.wireguard.android.widget.MonkeyedTextInputEditText
                                 android:id="@+id/public_key_text"
@@ -157,7 +158,8 @@
                             app:layout_constraintEnd_toEndOf="parent"
                             app:layout_constraintHorizontal_weight="0.3"
                             app:layout_constraintStart_toEndOf="@id/addresses_label_layout"
-                            app:layout_constraintTop_toBottomOf="@id/public_key_label_layout">
+                            app:layout_constraintTop_toBottomOf="@id/public_key_label_layout"
+                            app:placeholderText="@string/hint_random">
 
                             <com.wireguard.android.widget.MonkeyedTextInputEditText
                                 android:layout_width="match_parent"
@@ -198,7 +200,8 @@
                             app:layout_constraintEnd_toEndOf="parent"
                             app:layout_constraintHorizontal_weight="0.3"
                             app:layout_constraintStart_toEndOf="@id/dns_servers_label_layout"
-                            app:layout_constraintTop_toBottomOf="@id/addresses_label_layout">
+                            app:layout_constraintTop_toBottomOf="@id/addresses_label_layout"
+                            app:placeholderText="@string/hint_automatic">
 
                             <com.wireguard.android.widget.MonkeyedTextInputEditText
                                 android:id="@+id/mtu_text"
