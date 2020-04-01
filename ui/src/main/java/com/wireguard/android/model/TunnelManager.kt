@@ -27,9 +27,12 @@ import com.wireguard.config.Config
 import java9.util.concurrent.CompletableFuture
 import java9.util.concurrent.CompletionStage
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.ArrayList
 
@@ -214,7 +217,9 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
                 saveState()
             }
 
-    class IntentReceiver : BroadcastReceiver() {
+    class IntentReceiver : BroadcastReceiver(), CoroutineScope {
+        override val coroutineContext
+            get() = Job() + Dispatchers.Default
         override fun onReceive(context: Context, intent: Intent?) {
             val manager = getTunnelManager()
             if (intent == null) return
@@ -232,9 +237,11 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
                 else -> return
             }
             val tunnelName = intent.getStringExtra("tunnel") ?: return
-            manager.tunnels.thenAccept {
-                val tunnel = it[tunnelName] ?: return@thenAccept
-                manager.setTunnelState(tunnel, state)
+            launch {
+                manager.getTunnelsAsync().let {
+                    val tunnel = it[tunnelName] ?: return@launch
+                    manager.setTunnelState(tunnel, state)
+                }
             }
         }
     }
