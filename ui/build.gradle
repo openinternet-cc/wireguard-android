@@ -75,6 +75,7 @@ dependencies {
     implementation "androidx.core:core-ktx:$coreKtxVersion"
     implementation "androidx.databinding:databinding-runtime:$agpVersion"
     implementation "androidx.fragment:fragment:$fragmentVersion"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleKtxVersion"
     implementation "androidx.preference:preference:$preferenceVersion"
     implementation "com.google.android.material:material:$materialComponentsVersion"
     implementation "com.journeyapps:zxing-android-embedded:$zxingEmbeddedVersion"

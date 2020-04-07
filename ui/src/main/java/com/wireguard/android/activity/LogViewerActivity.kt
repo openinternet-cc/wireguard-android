@@ -26,6 +26,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ShareCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -40,9 +41,7 @@ import com.wireguard.android.widget.EdgeToEdge.setUpFAB
 import com.wireguard.android.widget.EdgeToEdge.setUpRoot
 import com.wireguard.android.widget.EdgeToEdge.setUpScrollingContent
 import com.wireguard.crypto.KeyPair
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -67,7 +66,6 @@ class LogViewerActivity : AppCompatActivity() {
     private var rawLogLines = StringBuffer()
     private var recyclerView: RecyclerView? = null
     private var saveButton: MenuItem? = null
-    private val coroutineScope = CoroutineScope(Dispatchers.Default)
     private val year by lazy {
         val yearFormatter: DateFormat = SimpleDateFormat("yyyy", Locale.US)
         yearFormatter.format(Date())
@@ -114,7 +112,7 @@ class LogViewerActivity : AppCompatActivity() {
             addItemDecoration(DividerItemDecoration(context, LinearLayoutManager.VERTICAL))
         }
 
-        coroutineScope.launch { streamingLog() }
+        lifecycleScope.launch { streamingLog() }
 
         binding.shareFab.setOnClickListener {
             revokeLastUri()
@@ -153,43 +151,36 @@ class LogViewerActivity : AppCompatActivity() {
                 true
             }
             R.id.save_log -> {
-                coroutineScope.launch { saveLog() }
+                lifecycleScope.launch { saveLog() }
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        coroutineScope.cancel()
-    }
-
     private suspend fun saveLog() {
         val context = this
-        withContext(Dispatchers.Main) {
-            saveButton?.isEnabled = false
-            withContext(Dispatchers.IO) {
-                var exception: Throwable? = null
-                var outputFile: DownloadsFileSaver.DownloadsFile? = null
-                try {
-                    outputFile = DownloadsFileSaver.save(context, "wireguard-log.txt", "text/plain", true)
-                    outputFile.outputStream.use {
-                        it.write(rawLogLines.toString().toByteArray(Charsets.UTF_8))
-                    }
-                } catch (e: Throwable) {
-                    outputFile?.delete()
-                    exception = e
+        saveButton?.isEnabled = false
+        withContext(Dispatchers.IO) {
+            var exception: Throwable? = null
+            var outputFile: DownloadsFileSaver.DownloadsFile? = null
+            try {
+                outputFile = DownloadsFileSaver.save(context, "wireguard-log.txt", "text/plain", true)
+                outputFile.outputStream.use {
+                    it.write(rawLogLines.toString().toByteArray(Charsets.UTF_8))
                 }
-                withContext(Dispatchers.Main) {
-                    saveButton?.isEnabled = true
-                    Snackbar.make(findViewById(android.R.id.content),
-                            if (exception == null) getString(R.string.log_export_success, outputFile?.fileName)
-                            else getString(R.string.log_export_error, ErrorMessages[exception]),
-                            if (exception == null) Snackbar.LENGTH_SHORT else Snackbar.LENGTH_LONG)
-                            .setAnchorView(binding.shareFab)
-                            .show()
-                }
+            } catch (e: Throwable) {
+                outputFile?.delete()
+                exception = e
+            }
+            withContext(Dispatchers.Main) {
+                saveButton?.isEnabled = true
+                Snackbar.make(findViewById(android.R.id.content),
+                        if (exception == null) getString(R.string.log_export_success, outputFile?.fileName)
+                        else getString(R.string.log_export_error, ErrorMessages[exception]),
+                        if (exception == null) Snackbar.LENGTH_SHORT else Snackbar.LENGTH_LONG)
+                        .setAnchorView(binding.shareFab)
+                        .show()
             }
         }
     }

@@ -20,6 +20,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import com.google.zxing.integration.android.IntentIntegrator
 import com.wireguard.android.Application
@@ -36,9 +37,7 @@ import com.wireguard.android.widget.EdgeToEdge.setUpScrollingContent
 import com.wireguard.android.widget.MultiselectableRelativeLayout
 import com.wireguard.config.Config
 import java9.util.concurrent.CompletableFuture
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
@@ -55,13 +54,12 @@ import java.util.zip.ZipInputStream
 /**
  * Fragment containing a list of known WireGuard tunnels. It allows creating and deleting tunnels.
  */
-class TunnelListFragment : BaseFragment(), CoroutineScope {
+class TunnelListFragment : BaseFragment() {
     private val actionModeListener = ActionModeListener()
     private var actionMode: ActionMode? = null
     private var binding: TunnelListFragmentBinding? = null
-    private val job = Job()
-    override val coroutineContext
-        get() =  job + Dispatchers.Main
+    private val coroutineScope
+        get() = viewLifecycleOwner.lifecycleScope
     private fun importTunnel(configText: String) {
         try {
             // Ensure the config text is parseable before proceeding…
@@ -224,7 +222,6 @@ class TunnelListFragment : BaseFragment(), CoroutineScope {
 
     override fun onDestroyView() {
         binding = null
-        job.cancel()
         super.onDestroyView()
     }
 
@@ -330,7 +327,7 @@ class TunnelListFragment : BaseFragment(), CoroutineScope {
                     Application.getTunnelManager().tunnels.thenAccept { tunnels ->
                         val tunnelsToDelete = ArrayList<ObservableTunnel>()
                         for (position in copyCheckedItems) tunnelsToDelete.add(tunnels[position])
-                        launch {
+                        coroutineScope.launch {
                             val exception = try {
                                 tunnelsToDelete.map { async { it.delete() } }.toList().awaitAll()
                                 null
