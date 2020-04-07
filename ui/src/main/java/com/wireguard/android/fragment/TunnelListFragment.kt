@@ -36,6 +36,12 @@ import com.wireguard.android.widget.EdgeToEdge.setUpScrollingContent
 import com.wireguard.android.widget.MultiselectableRelativeLayout
 import com.wireguard.config.Config
 import java9.util.concurrent.CompletableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
@@ -49,10 +55,13 @@ import java.util.zip.ZipInputStream
 /**
  * Fragment containing a list of known WireGuard tunnels. It allows creating and deleting tunnels.
  */
-class TunnelListFragment : BaseFragment() {
+class TunnelListFragment : BaseFragment(), CoroutineScope {
     private val actionModeListener = ActionModeListener()
     private var actionMode: ActionMode? = null
     private var binding: TunnelListFragmentBinding? = null
+    private val job = Job()
+    override val coroutineContext
+        get() =  job + Dispatchers.Main
     private fun importTunnel(configText: String) {
         try {
             // Ensure the config text is parseable before proceeding…
@@ -215,6 +224,7 @@ class TunnelListFragment : BaseFragment() {
 
     override fun onDestroyView() {
         binding = null
+        job.cancel()
         super.onDestroyView()
     }
 
@@ -320,10 +330,15 @@ class TunnelListFragment : BaseFragment() {
                     Application.getTunnelManager().tunnels.thenAccept { tunnels ->
                         val tunnelsToDelete = ArrayList<ObservableTunnel>()
                         for (position in copyCheckedItems) tunnelsToDelete.add(tunnels[position])
-                        val futures = tunnelsToDelete.map { it.delete().toCompletableFuture() }.toTypedArray()
-                        CompletableFuture.allOf(*futures)
-                                .thenApply { futures.size }
-                                .whenComplete(this@TunnelListFragment::onTunnelDeletionFinished)
+                        launch {
+                            val exception = try {
+                                tunnelsToDelete.map { async { it.delete() } }.toList().awaitAll()
+                                null
+                            } catch (e: Exception) {
+                                e
+                            }
+                            onTunnelDeletionFinished(tunnelsToDelete.size, exception)
+                        }
                     }
                     checkedItems.clear()
                     mode.finish()

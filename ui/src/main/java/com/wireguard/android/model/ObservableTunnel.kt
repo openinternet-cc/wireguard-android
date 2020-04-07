@@ -121,5 +121,5 @@ class ObservableTunnel internal constructor(
     }
 
 
-    fun delete(): CompletionStage<Void> = manager.delete(this)
+    suspend fun delete() = manager.delete(this)
 }

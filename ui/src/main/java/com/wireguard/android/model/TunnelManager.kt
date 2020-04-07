@@ -61,14 +61,14 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         return getAsyncWorker().supplyAsync { configStore.create(name, config!!) }.thenApply { addToList(name, it, Tunnel.State.DOWN) }
     }
 
-    fun delete(tunnel: ObservableTunnel): CompletionStage<Void> {
+    suspend fun delete(tunnel: ObservableTunnel) {
         val originalState = tunnel.state
         val wasLastUsed = tunnel == lastUsedTunnel
         // Make sure nothing touches the tunnel.
         if (wasLastUsed)
             lastUsedTunnel = null
         tunnelMap.remove(tunnel)
-        return getAsyncWorker().runAsync {
+        withContext(Dispatchers.Default) {
             if (originalState == Tunnel.State.UP)
                 getBackend().setState(tunnel, Tunnel.State.DOWN, null)
             try {
@@ -76,15 +76,11 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
             } catch (e: Exception) {
                 if (originalState == Tunnel.State.UP)
                     getBackend().setState(tunnel, Tunnel.State.UP, tunnel.config)
+                tunnelMap.add(tunnel)
+                if (wasLastUsed)
+                    lastUsedTunnel = tunnel
                 throw e
             }
-        }.whenComplete { _, e ->
-            if (e == null)
-                return@whenComplete
-            // Failure, put the tunnel back.
-            tunnelMap.add(tunnel)
-            if (wasLastUsed)
-                lastUsedTunnel = tunnel
         }
     }
 
