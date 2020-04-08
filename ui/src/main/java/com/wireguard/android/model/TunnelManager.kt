@@ -47,7 +47,7 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
     private val tunnelMap: ObservableSortedKeyedArrayList<String, ObservableTunnel> = ObservableSortedKeyedArrayList(TunnelComparator)
     private var haveLoaded = false
 
-    private fun addToList(name: String, config: Config?, state: Tunnel.State): ObservableTunnel? {
+    private fun addToList(name: String, config: Config?, state: Tunnel.State): ObservableTunnel {
         val tunnel = ObservableTunnel(this, name, config, state)
         tunnelMap.add(tunnel)
         return tunnel
@@ -59,6 +59,15 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         if (tunnelMap.containsKey(name))
             return CompletableFuture.failedFuture(IllegalArgumentException(context.getString(R.string.tunnel_error_already_exists, name)))
         return getAsyncWorker().supplyAsync { configStore.create(name, config!!) }.thenApply { addToList(name, it, Tunnel.State.DOWN) }
+    }
+
+    suspend fun createAsync(name: String, config: Config?): ObservableTunnel {
+        if (Tunnel.isNameInvalid(name))
+            throw IllegalArgumentException(context.getString(R.string.tunnel_error_invalid_name))
+        if (tunnelMap.containsKey(name))
+            throw IllegalArgumentException(context.getString(R.string.tunnel_error_already_exists, name))
+        val newConfig = configStore.create(name, config!!)
+        return withContext(Dispatchers.Main) { addToList(name, newConfig, Tunnel.State.DOWN) }
     }
 
     suspend fun delete(tunnel: ObservableTunnel) {

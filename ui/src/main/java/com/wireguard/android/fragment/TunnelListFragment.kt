@@ -36,16 +36,17 @@ import com.wireguard.android.widget.EdgeToEdge.setUpRoot
 import com.wireguard.android.widget.EdgeToEdge.setUpScrollingContent
 import com.wireguard.android.widget.MultiselectableRelativeLayout
 import com.wireguard.config.Config
-import java9.util.concurrent.CompletableFuture
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.ByteArrayInputStream
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
-import java.util.ArrayList
 import java.util.HashSet
 import java.util.Locale
 import java.util.zip.ZipEntry
@@ -72,105 +73,98 @@ class TunnelListFragment : BaseFragment() {
         }
     }
 
-    private fun importTunnel(uri: Uri?) {
+    private suspend fun importTunnel(uri: Uri?) {
         val activity = activity
         if (activity == null || uri == null) {
             return
         }
         val contentResolver = activity.contentResolver
 
-        val futureTunnels = ArrayList<CompletableFuture<ObservableTunnel>>()
+        val deferredTunnels = ArrayList<Deferred<ObservableTunnel>>()
         val throwables = ArrayList<Throwable>()
-        Application.getAsyncWorker().supplyAsync {
-            val columns = arrayOf(OpenableColumns.DISPLAY_NAME)
-            var name = ""
-            contentResolver.query(uri, columns, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst() && !cursor.isNull(0)) {
-                    name = cursor.getString(0)
-                }
+        val columns = arrayOf(OpenableColumns.DISPLAY_NAME)
+        var name = ""
+        contentResolver.query(uri, columns, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                name = cursor.getString(0)
             }
-            if (name.isEmpty()) {
-                name = Uri.decode(uri.lastPathSegment)
-            }
-            var idx = name.lastIndexOf('/')
-            if (idx >= 0) {
-                require(idx < name.length - 1) { resources.getString(R.string.illegal_filename_error, name) }
-                name = name.substring(idx + 1)
-            }
-            val isZip = name.toLowerCase(Locale.ROOT).endsWith(".zip")
-            if (name.toLowerCase(Locale.ROOT).endsWith(".conf")) {
-                name = name.substring(0, name.length - ".conf".length)
-            } else {
-                require(isZip) { resources.getString(R.string.bad_extension_error) }
-            }
+        }
+        if (name.isEmpty()) {
+            name = Uri.decode(uri.lastPathSegment)
+        }
+        var idx = name.lastIndexOf('/')
+        if (idx >= 0) {
+            require(idx < name.length - 1) { resources.getString(R.string.illegal_filename_error, name) }
+            name = name.substring(idx + 1)
+        }
+        val isZip = name.toLowerCase(Locale.ROOT).endsWith(".zip")
+        if (name.toLowerCase(Locale.ROOT).endsWith(".conf")) {
+            name = name.substring(0, name.length - ".conf".length)
+        } else {
+            require(isZip) { resources.getString(R.string.bad_extension_error) }
+        }
 
-            if (isZip) {
-                ZipInputStream(contentResolver.openInputStream(uri)).use { zip ->
-                    val reader = BufferedReader(InputStreamReader(zip, StandardCharsets.UTF_8))
-                    var entry: ZipEntry?
-                    while (true) {
-                        entry = zip.nextEntry ?: break
-                        name = entry.name
-                        idx = name.lastIndexOf('/')
-                        if (idx >= 0) {
-                            if (idx >= name.length - 1) {
+        withContext(Dispatchers.IO) {
+            supervisorScope {
+                if (isZip) {
+                    ZipInputStream(contentResolver.openInputStream(uri)).use { zip ->
+                        val reader = BufferedReader(InputStreamReader(zip, StandardCharsets.UTF_8))
+                        var entry: ZipEntry?
+                        while (true) {
+                            entry = zip.nextEntry ?: break
+                            name = entry.name
+                            idx = name.lastIndexOf('/')
+                            if (idx >= 0) {
+                                if (idx >= name.length - 1) {
+                                    continue
+                                }
+                                name = name.substring(name.lastIndexOf('/') + 1)
+                            }
+                            if (name.toLowerCase(Locale.ROOT).endsWith(".conf")) {
+                                name = name.substring(0, name.length - ".conf".length)
+                            } else {
                                 continue
                             }
-                            name = name.substring(name.lastIndexOf('/') + 1)
-                        }
-                        if (name.toLowerCase(Locale.ROOT).endsWith(".conf")) {
-                            name = name.substring(0, name.length - ".conf".length)
-                        } else {
-                            continue
-                        }
-                        try {
-                            Config.parse(reader)
-                        } catch (e: Exception) {
-                            throwables.add(e)
-                            null
-                        }?.let {
-                            futureTunnels.add(Application.getTunnelManager().create(name, it).toCompletableFuture())
+                            try {
+                                Config.parse(reader)
+                            } catch (e: Exception) {
+                                throwables.add(e)
+                                null
+                            }?.let {
+                                deferredTunnels.add(async {
+                                    Application.getTunnelManager().createAsync(name, it)
+                                })
+                            }
                         }
                     }
-                }
-            } else {
-                futureTunnels.add(
-                        Application.getTunnelManager().create(
-                                name,
-                                Config.parse(contentResolver.openInputStream(uri)!!)
-                        ).toCompletableFuture()
-                )
-            }
-
-            if (futureTunnels.isEmpty()) {
-                if (throwables.size == 1) {
-                    throw throwables[0]
                 } else {
-                    require(throwables.isNotEmpty()) { resources.getString(R.string.no_configs_error) }
+                    deferredTunnels.add(async {
+                        Application.getTunnelManager().createAsync(name, Config.parse(contentResolver.openInputStream(uri)!!))
+                    })
                 }
             }
-            CompletableFuture.allOf(*futureTunnels.toTypedArray())
-        }.whenComplete { future, exception ->
-            if (exception != null) {
-                onTunnelImportFinished(emptyList(), listOf(exception))
-            } else {
-                future.whenComplete { _, _ ->
-                    val tunnels = mutableListOf<ObservableTunnel>()
-                    for (futureTunnel in futureTunnels) {
-                        val tunnel: ObservableTunnel? = try {
-                            futureTunnel.getNow(null)
-                        } catch (e: Exception) {
-                            throwables.add(e)
-                            null
-                        }
+        }
 
-                        if (tunnel != null) {
-                            tunnels.add(tunnel)
-                        }
-                    }
-                    onTunnelImportFinished(tunnels, throwables)
+        if (deferredTunnels.isEmpty()) {
+            if (throwables.size == 1) {
+                throw throwables[0]
+            } else {
+                require(throwables.isNotEmpty()) { resources.getString(R.string.no_configs_error) }
+            }
+        }
+
+        try {
+            val tunnels = mutableListOf<ObservableTunnel>()
+            deferredTunnels.forEach {
+                try {
+                    tunnels.add(it.await())
+                } catch (e: Exception) {
+                    throwables.add(e)
                 }
             }
+            onTunnelImportFinished(tunnels, throwables)
+        } catch (e: Exception) {
+            onTunnelImportFinished(emptyList(), listOf(e))
         }
     }
 
@@ -187,7 +181,7 @@ class TunnelListFragment : BaseFragment() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         when (requestCode) {
             REQUEST_IMPORT -> {
-                if (resultCode == Activity.RESULT_OK && data != null) importTunnel(data.data)
+                if (resultCode == Activity.RESULT_OK && data != null) coroutineScope.launch { importTunnel(data.data) }
                 return
             }
             IntentIntegrator.REQUEST_CODE -> {
