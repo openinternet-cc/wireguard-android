@@ -46,7 +46,7 @@ public interface Backend {
      * Determine version of underlying backend.
      *
      * @return The version of the backend.
-     * @throws Exception
+     * @throws Exception Exception raised while retrieving version.
      */
     String getVersion() throws Exception;
 
