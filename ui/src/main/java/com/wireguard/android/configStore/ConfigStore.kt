@@ -19,7 +19,7 @@ interface ConfigStore {
      * @return The configuration that was actually saved to persistent storage.
      */
     @Throws(Exception::class)
-    fun create(name: String, config: Config): Config
+    suspend fun create(name: String, config: Config): Config
 
     /**
      * Delete a persistent tunnel.
@@ -27,7 +27,7 @@ interface ConfigStore {
      * @param name The name of the tunnel to delete.
      */
     @Throws(Exception::class)
-    fun delete(name: String)
+    suspend fun delete(name: String)
 
     /**
      * Enumerate the names of tunnels present in persistent storage.
@@ -44,7 +44,7 @@ interface ConfigStore {
      * @return An in-memory representation of the configuration loaded from persistent storage.
      */
     @Throws(Exception::class)
-    fun load(name: String): Config
+    suspend fun load(name: String): Config
 
     /**
      * Rename the configuration for the tunnel given by `name`.
@@ -53,7 +53,7 @@ interface ConfigStore {
      * @param replacement The new identifier for the configuration in persistent storage.
      */
     @Throws(Exception::class)
-    fun rename(name: String, replacement: String)
+    suspend fun rename(name: String, replacement: String)
 
     /**
      * Save the configuration for an existing tunnel given by `name`.
@@ -64,5 +64,5 @@ interface ConfigStore {
      * @return The configuration that was actually saved to persistent storage.
      */
     @Throws(Exception::class)
-    fun save(name: String, config: Config): Config
+    suspend fun save(name: String, config: Config): Config
 }
