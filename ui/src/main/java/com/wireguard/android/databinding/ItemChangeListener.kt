@@ -28,7 +28,8 @@ internal class ItemChangeListener<T>(private val container: ViewGroup, private v
             binding = DataBindingUtil.inflate(layoutInflater, layoutId, container, false)
         }
         require(list != null) { "Trying to get a view while list is still null" }
-        binding!!.setVariable(BR.collection, list)
+        require(binding != null) { "binding should not be null"}
+        binding.setVariable(BR.collection, list)
         binding.setVariable(BR.item, list!![position])
         binding.setVariable(BR.fragment, fragment)
         binding.executePendingBindings()

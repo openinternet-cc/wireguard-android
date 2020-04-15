@@ -24,7 +24,7 @@ open class ObservableKeyedArrayList<K, E : Keyed<out K>> : ObservableArrayList<E
         val iterator = listIterator()
         while (iterator.hasNext()) {
             val index = iterator.nextIndex()
-            if (iterator.next()!!.key == key)
+            if (iterator.next().key == key)
                 return index
         }
         return -1

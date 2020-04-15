@@ -63,8 +63,8 @@ object DownloadsFileSaver {
 
     class DownloadsFile(private val context: Context, val outputStream: OutputStream, val fileName: String, private val uri: Uri?) {
         fun delete() {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                context.contentResolver.delete(uri!!, null, null)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && uri != null)
+                context.contentResolver.delete(uri, null, null)
             else
                 File(fileName).delete()
         }

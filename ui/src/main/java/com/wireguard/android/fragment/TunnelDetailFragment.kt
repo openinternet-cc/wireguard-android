@@ -68,18 +68,22 @@ class TunnelDetailFragment : BaseFragment() {
 
     override fun onResume() {
         super.onResume()
-        timer = Timer()
-        timer!!.scheduleAtFixedRate(object : TimerTask() {
-            override fun run() {
-                updateStats()
-            }
-        }, 0, 1000)
+        timer = Timer().also {
+            it.scheduleAtFixedRate(object : TimerTask() {
+                override fun run() {
+                    updateStats()
+                }
+            }, 0, 1000)
+        }
     }
 
     override fun onSelectedTunnelChanged(oldTunnel: ObservableTunnel?, newTunnel: ObservableTunnel?) {
         binding ?: return
         binding!!.tunnel = newTunnel
-        if (newTunnel == null) binding!!.config = null else newTunnel.configAsync.thenAccept { config -> binding!!.config = config }
+        if (newTunnel == null)
+            binding!!.config = null
+        else
+            newTunnel.configAsync.thenAccept { config -> binding!!.config = config }
         lastState = Tunnel.State.TOGGLE
         updateStats()
     }

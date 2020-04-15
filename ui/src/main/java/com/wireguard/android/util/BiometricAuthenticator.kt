@@ -34,7 +34,8 @@ object BiometricAuthenticator {
     @SuppressLint("PrivateApi")
     private fun isPinEnabled(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            return context.getSystemService<KeyguardManager>()!!.isDeviceSecure
+            // Reasonable assumption I suppose
+            return context.getSystemService<KeyguardManager>()?.isDeviceSecure ?: false
         return try {
             val lockUtilsClass = Class.forName("com.android.internal.widget.LockPatternUtils")
             val lockUtils = lockUtilsClass.getConstructor(Context::class.java).newInstance(context)

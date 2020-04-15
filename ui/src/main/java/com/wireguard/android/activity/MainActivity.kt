@@ -10,7 +10,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
-import androidx.appcompat.app.ActionBar
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentTransaction
 import com.wireguard.android.R
@@ -24,7 +23,6 @@ import com.wireguard.android.model.ObservableTunnel
  * editing the configuration and interface state of WireGuard tunnels.
  */
 class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener {
-    private var actionBar: ActionBar? = null
     private var isTwoPaneLayout = false
 
     override fun onBackPressed() {
@@ -44,17 +42,16 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
     }
 
     override fun onBackStackChanged() {
-        if (actionBar == null) return
+        supportActionBar ?: return
         // Do not show the home menu when the two-pane layout is at the detail view (see above).
         val backStackEntries = supportFragmentManager.backStackEntryCount
         val minBackStackEntries = if (isTwoPaneLayout) 2 else 1
-        actionBar!!.setDisplayHomeAsUpEnabled(backStackEntries >= minBackStackEntries)
+        supportActionBar?.setDisplayHomeAsUpEnabled(backStackEntries >= minBackStackEntries)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.main_activity)
-        actionBar = supportActionBar
         isTwoPaneLayout = findViewById<View>(R.id.master_detail_wrapper) is LinearLayout
         supportFragmentManager.addOnBackStackChangedListener(this)
         onBackStackChanged()

@@ -30,6 +30,7 @@ import com.wireguard.android.util.ToolsInstaller
 import java9.util.concurrent.CompletableFuture
 import java.lang.ref.WeakReference
 import java.util.Locale
+import kotlin.system.exitProcess
 
 class Application : android.app.Application(), OnSharedPreferenceChangeListener {
     private val futureBackend = CompletableFuture<Backend>()
@@ -49,7 +50,7 @@ class Application : android.app.Application(), OnSharedPreferenceChangeListener 
             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
-            System.exit(0)
+            exitProcess(0)
         }
         if (BuildConfig.DEBUG) {
             StrictMode.setVmPolicy(VmPolicy.Builder().detectAll().penaltyLog().build())
@@ -93,7 +94,7 @@ class Application : android.app.Application(), OnSharedPreferenceChangeListener 
 
         @JvmStatic
         fun get(): Application {
-            return weakSelf.get()!!
+            return requireNotNull(weakSelf.get())
         }
 
         @JvmStatic
@@ -130,7 +131,7 @@ class Application : android.app.Application(), OnSharedPreferenceChangeListener 
                     }
                     app.backend = backend
                 }
-                return app.backend!!
+                return requireNotNull(app.backend) { "backend must be initialized at this stage" }
             }
         }
 
