@@ -202,15 +202,22 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         return newName!!
     }
 
-    fun setTunnelState(tunnel: ObservableTunnel, state: Tunnel.State): CompletionStage<Tunnel.State> = tunnel.configAsync
-            .thenCompose { getAsyncWorker().supplyAsync { getBackend().setState(tunnel, state, it) } }
-            .whenComplete { newState, e ->
-                // Ensure onStateChanged is always called (failure or not), and with the correct state.
-                tunnel.onStateChanged(if (e == null) newState else tunnel.state)
-                if (e == null && newState == Tunnel.State.UP)
-                    lastUsedTunnel = tunnel
-                saveState()
-            }
+    suspend fun setTunnelState(tunnel: ObservableTunnel, state: Tunnel.State): Tunnel.State {
+        tunnel.getConfigAsync()
+                .apply {
+                    val newState = try {
+                        getBackend().setState(tunnel, state, this)
+                    } catch (e: Exception){
+                        tunnel.state
+                    }
+                    tunnel.onStateChanged(newState)
+                    if (newState == Tunnel.State.UP) {
+                        lastUsedTunnel = tunnel
+                    }
+                    saveState()
+                    return newState
+                }
+    }
 
     class IntentReceiver : BroadcastReceiver(), CoroutineScope {
         override val coroutineContext
@@ -241,11 +248,17 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         }
     }
 
-    fun getTunnelState(tunnel: ObservableTunnel): CompletionStage<Tunnel.State> = getAsyncWorker()
-            .supplyAsync { getBackend().getState(tunnel) }.thenApply(tunnel::onStateChanged)
+    suspend fun getTunnelState(tunnel: ObservableTunnel): Tunnel.State {
+        val state = withContext(Dispatchers.IO) { getBackend().getState(tunnel) }
+        tunnel.onStateChanged(state)
+        return state
+    }
 
-    fun getTunnelStatistics(tunnel: ObservableTunnel): CompletionStage<Statistics> = getAsyncWorker()
-            .supplyAsync { getBackend().getStatistics(tunnel) }.thenApply(tunnel::onStatisticsChanged)
+    suspend fun getTunnelStatistics(tunnel: ObservableTunnel): Statistics {
+        val statistics = withContext(Dispatchers.IO) { getBackend().getStatistics(tunnel) }
+        tunnel.onStatisticsChanged(statistics)
+        return statistics
+    }
 
     companion object {
         private const val KEY_LAST_USED_TUNNEL = "last_used_tunnel"
