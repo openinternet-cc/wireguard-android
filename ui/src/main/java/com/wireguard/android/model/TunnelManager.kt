@@ -28,7 +28,6 @@ import java9.util.concurrent.CompletableFuture
 import java9.util.concurrent.CompletionStage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -53,15 +52,7 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         return tunnel
     }
 
-    fun create(name: String, config: Config?): CompletionStage<ObservableTunnel> {
-        if (Tunnel.isNameInvalid(name))
-            return CompletableFuture.failedFuture(IllegalArgumentException(context.getString(R.string.tunnel_error_invalid_name)))
-        if (tunnelMap.containsKey(name))
-            return CompletableFuture.failedFuture(IllegalArgumentException(context.getString(R.string.tunnel_error_already_exists, name)))
-        return getAsyncWorker().supplyAsync { configStore.create(name, config!!) }.thenApply { addToList(name, it, Tunnel.State.DOWN) }
-    }
-
-    suspend fun createAsync(name: String, config: Config?): ObservableTunnel {
+    suspend fun create(name: String, config: Config?): ObservableTunnel {
         if (Tunnel.isNameInvalid(name))
             throw IllegalArgumentException(context.getString(R.string.tunnel_error_invalid_name))
         if (tunnelMap.containsKey(name))
@@ -108,16 +99,12 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
 
     suspend fun getTunnelsAsync() = tunnelsAsync.await()
 
-    fun getTunnelConfig(tunnel: ObservableTunnel): CompletionStage<Config> = getAsyncWorker()
-            .supplyAsync { configStore.load(tunnel.name) }.thenApply(tunnel::onConfigChanged)
-
-    suspend fun getTunnelConfigAsync(tunnel: ObservableTunnel): Deferred<Config> = withContext(Dispatchers.IO) {
-        val deferred = CompletableDeferred<Config>()
-        configStore.load(tunnel.name).also {
-            tunnel.onConfigChanged(it)
-            deferred.complete(it)
+    suspend fun getTunnelConfig(tunnel: ObservableTunnel): Config {
+        val config = withContext(Dispatchers.IO) {
+            configStore.load(tunnel.name)
         }
-        deferred
+        tunnel.onConfigChanged(config)
+        return config
     }
 
     suspend fun onCreate() = withContext(Dispatchers.IO) {
@@ -176,16 +163,18 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         getSharedPreferences().edit().putStringSet(KEY_RUNNING_TUNNELS, tunnelMap.filter { it.state == Tunnel.State.UP }.map { it.name }.toSet()).commit()
     }
 
-    fun setTunnelConfig(tunnel: ObservableTunnel, config: Config): CompletionStage<Config> = getAsyncWorker().supplyAsync {
+    suspend fun setTunnelConfig(tunnel: ObservableTunnel, config: Config): Config {
         getBackend().setState(tunnel, tunnel.state, config)
-        configStore.save(tunnel.name, config)
-    }.thenApply { tunnel.onConfigChanged(it) }
+        val conf = configStore.save(tunnel.name, config)
+        tunnel.onConfigChanged(conf)
+        return conf
+    }
 
-    fun setTunnelName(tunnel: ObservableTunnel, name: String): CompletionStage<String> {
+    suspend fun setTunnelName(tunnel: ObservableTunnel, name: String): String {
         if (Tunnel.isNameInvalid(name))
-            return CompletableFuture.failedFuture(IllegalArgumentException(context.getString(R.string.tunnel_error_invalid_name)))
+            throw IllegalArgumentException(context.getString(R.string.tunnel_error_invalid_name))
         if (tunnelMap.containsKey(name)) {
-            return CompletableFuture.failedFuture(IllegalArgumentException(context.getString(R.string.tunnel_error_already_exists, name)))
+            throw IllegalArgumentException(context.getString(R.string.tunnel_error_already_exists, name))
         }
         val originalState = tunnel.state
         val wasLastUsed = tunnel == lastUsedTunnel
@@ -193,23 +182,24 @@ class TunnelManager(private val configStore: ConfigStore) : BaseObservable() {
         if (wasLastUsed)
             lastUsedTunnel = null
         tunnelMap.remove(tunnel)
-        return getAsyncWorker().supplyAsync {
+        val newName = try {
             if (originalState == Tunnel.State.UP)
                 getBackend().setState(tunnel, Tunnel.State.DOWN, null)
             configStore.rename(tunnel.name, name)
             val newName = tunnel.onNameChanged(name)
             if (originalState == Tunnel.State.UP)
                 getBackend().setState(tunnel, Tunnel.State.UP, tunnel.config)
-            newName
-        }.whenComplete { _, e ->
-            // On failure, we don't know what state the tunnel might be in. Fix that.
-            if (e != null)
-                getTunnelState(tunnel)
             // Add the tunnel back to the manager, under whatever name it thinks it has.
             tunnelMap.add(tunnel)
             if (wasLastUsed)
                 lastUsedTunnel = tunnel
+            newName
+        } catch (e: Exception) {
+            // On failure, we don't know what state the tunnel might be in. Fix that.
+            getTunnelState(tunnel)
+            null
         }
+        return newName!!
     }
 
     fun setTunnelState(tunnel: ObservableTunnel, state: Tunnel.State): CompletionStage<Tunnel.State> = tunnel.configAsync

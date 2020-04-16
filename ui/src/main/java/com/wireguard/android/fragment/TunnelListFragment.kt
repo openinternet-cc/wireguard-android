@@ -132,14 +132,14 @@ class TunnelListFragment : BaseFragment() {
                                 null
                             }?.let {
                                 deferredTunnels.add(async {
-                                    Application.getTunnelManager().createAsync(name, it)
+                                    Application.getTunnelManager().create(name, it)
                                 })
                             }
                         }
                     }
                 } else {
                     deferredTunnels.add(async {
-                        Application.getTunnelManager().createAsync(name, Config.parse(contentResolver.openInputStream(uri)!!))
+                        Application.getTunnelManager().create(name, Config.parse(contentResolver.openInputStream(uri)!!))
                     })
                 }
             }
