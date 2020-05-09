@@ -20,6 +20,7 @@ import androidx.preference.PreferenceManager
 import com.wireguard.android.backend.Backend
 import com.wireguard.android.backend.GoBackend
 import com.wireguard.android.backend.WgQuickBackend
+import com.wireguard.android.configStore.EncryptedFileConfigStore
 import com.wireguard.android.configStore.FileConfigStore
 import com.wireguard.android.model.TunnelManager
 import com.wireguard.android.util.AsyncWorker
@@ -70,7 +71,11 @@ class Application : android.app.Application(), OnSharedPreferenceChangeListener 
         } else {
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         }
-        tunnelManager = TunnelManager(FileConfigStore(applicationContext))
+        tunnelManager = TunnelManager(if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M)
+            FileConfigStore(applicationContext)
+        else
+            EncryptedFileConfigStore(applicationContext)
+        )
         tunnelManager.onCreate()
         asyncWorker.supplyAsync(Companion::getBackend).thenAccept { futureBackend.complete(it) }
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)

@@ -19,6 +19,9 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
+    <!-- androidx.security sets a minSdk of 23, but we are at 21. Runtime usages are guarded -->
+    <uses-sdk tools:overrideLibrary="androidx.security" />
+
     <permission
         android:name="${applicationId}.permission.CONTROL_TUNNELS"
         android:description="@string/permission_description"

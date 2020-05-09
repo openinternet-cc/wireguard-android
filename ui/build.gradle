@@ -75,6 +75,7 @@ dependencies {
     implementation "androidx.databinding:databinding-runtime:$agpVersion"
     implementation "androidx.fragment:fragment:$fragmentVersion"
     implementation "androidx.preference:preference:$preferenceVersion"
+    implementation "androidx.security:security-crypto:$securityVersion"
     implementation "com.google.android.material:material:$materialComponentsVersion"
     implementation "com.journeyapps:zxing-android-embedded:$zxingEmbeddedVersion"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion"
