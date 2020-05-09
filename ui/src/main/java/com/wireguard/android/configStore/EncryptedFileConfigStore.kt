@@ -43,7 +43,9 @@ class EncryptedFileConfigStore(private val context: Context) : ConfigStore {
         if (cleartextConfigs.isNotEmpty()) {
             cleartextConfigs.forEach { cleartextConfigFile ->
                 val replacement = encryptedFileFor(cleartextConfigFile.nameWithoutExtension)
-                replacement.openFileOutput().write(cleartextConfigFile.readBytes())
+                replacement.openFileOutput().use {
+                    it.write(cleartextConfigFile.readBytes())
+                }
                 cleartextConfigFile.delete()
             }
         }
@@ -51,7 +53,9 @@ class EncryptedFileConfigStore(private val context: Context) : ConfigStore {
 
     override fun create(name: String, config: Config): Config {
         Log.d(TAG, "Creating configuration for tunnel $name")
-        encryptedFileFor(name).openFileOutput().write(config.toWgQuickString().toByteArray(Charsets.UTF_8))
+        encryptedFileFor(name).openFileOutput().use {
+            it.write(config.toWgQuickString().toByteArray(Charsets.UTF_8))
+        }
         return config
     }
 
@@ -89,7 +93,9 @@ class EncryptedFileConfigStore(private val context: Context) : ConfigStore {
         val file = fileFor(name)
         if (!file.isFile)
             throw FileNotFoundException(context.getString(R.string.config_not_found_error, file.name))
-        encryptedFileFor(name).openFileOutput().write(config.toWgQuickString().toByteArray(Charsets.UTF_8))
+        encryptedFileFor(name).openFileOutput().use {
+            it.write(config.toWgQuickString().toByteArray(Charsets.UTF_8))
+        }
         return config
     }
 
