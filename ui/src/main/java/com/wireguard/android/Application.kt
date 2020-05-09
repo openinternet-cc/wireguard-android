@@ -71,10 +71,10 @@ class Application : android.app.Application(), OnSharedPreferenceChangeListener 
         } else {
             AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
         }
-        tunnelManager = TunnelManager(if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M)
-            FileConfigStore(applicationContext)
-        else
+        tunnelManager = TunnelManager(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             EncryptedFileConfigStore(applicationContext)
+        else
+            FileConfigStore(applicationContext)
         )
         tunnelManager.onCreate()
         asyncWorker.supplyAsync(Companion::getBackend).thenAccept { futureBackend.complete(it) }
