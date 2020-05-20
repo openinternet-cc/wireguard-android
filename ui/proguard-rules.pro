@@ -10,5 +10,9 @@
     public <init>();
 }
 
+-keep public class com.google.crypto.tink.proto.AesGcmHkdfStreamingKeyFormat {
+    field version_;
+}
+
 # Don't obfuscate
 -dontobfuscate
