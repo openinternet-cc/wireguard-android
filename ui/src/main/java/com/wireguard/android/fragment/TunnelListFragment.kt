@@ -5,7 +5,6 @@
 package com.wireguard.android.fragment
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.Intent
 import android.content.res.Resources
 import android.net.Uri
@@ -21,6 +20,7 @@ import android.view.animation.Animation
 import android.view.animation.AnimationUtils
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.ActionMode
+import androidx.fragment.app.setFragmentResultListener
 import com.google.android.material.snackbar.Snackbar
 import com.google.zxing.integration.android.IntentIntegrator
 import com.wireguard.android.Application
@@ -168,8 +168,8 @@ class TunnelListFragment : BaseFragment() {
         }
     }
 
-    override fun onActivityCreated(savedInstanceState: Bundle?) {
-        super.onActivityCreated(savedInstanceState)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         if (savedInstanceState != null) {
             val checkedItems = savedInstanceState.getIntegerArrayList(CHECKED_ITEMS)
             if (checkedItems != null) {
@@ -178,33 +178,24 @@ class TunnelListFragment : BaseFragment() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        when (requestCode) {
-            REQUEST_IMPORT -> {
-                if (resultCode == Activity.RESULT_OK && data != null) importTunnel(data.data)
-                return
-            }
-            IntentIntegrator.REQUEST_CODE -> {
-                val result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
-                if (result != null && result.contents != null) {
-                    importTunnel(result.contents)
-                }
-                return
-            }
-            else -> super.onActivityResult(requestCode, resultCode, data)
-        }
-    }
-
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?,
                               savedInstanceState: Bundle?): View? {
         super.onCreateView(inflater, container, savedInstanceState)
+        childFragmentManager.setFragmentResultListener(FRAGMENT_RESULT_KEY, viewLifecycleOwner) { _, bundle ->
+            bundle.getParcelable<Uri>(FRAGMENT_RESULT_FILE_URI)?.let(::importTunnel)
+            bundle.getParcelable<Intent>(FRAGMENT_RESULT_QR_CODE)?.let { intent ->
+                val result = IntentIntegrator.parseActivityResult(0, 0, intent)
+                if (result != null && result.contents != null) {
+                    importTunnel(result.contents)
+                }
+            }
+        }
         binding = TunnelListFragmentBinding.inflate(inflater, container, false)
         binding?.apply {
             createFab.setOnClickListener {
                 val bottomSheet = AddTunnelsSheet()
-                bottomSheet.setTargetFragment(fragment, REQUEST_TARGET_FRAGMENT)
-                bottomSheet.show(parentFragmentManager, "BOTTOM_SHEET")
+                bottomSheet.show(childFragmentManager, "BOTTOM_SHEET")
             }
             executePendingBindings()
             setUpRoot(root as ViewGroup)
@@ -423,8 +414,10 @@ class TunnelListFragment : BaseFragment() {
     }
 
     companion object {
-        const val REQUEST_IMPORT = 1
-        private const val REQUEST_TARGET_FRAGMENT = 2
+        private const val REQUEST_IMPORT = 1
+        const val FRAGMENT_RESULT_FILE_URI = "import_file_uri"
+        const val FRAGMENT_RESULT_QR_CODE = "qr_code_data"
+        const val FRAGMENT_RESULT_KEY = "add_tunnels_sheet"
         private const val CHECKED_ITEMS = "CHECKED_ITEMS"
         private const val TAG = "WireGuard/TunnelListFragment"
     }

@@ -66,6 +66,7 @@ android {
 
 dependencies {
     implementation project(":tunnel")
+    implementation "androidx.activity:activity-ktx:$activityKtxVersion"
     implementation "androidx.annotation:annotation:$annotationsVersion"
     implementation "androidx.appcompat:appcompat:$appcompatVersion"
     implementation "androidx.constraintlayout:constraintlayout:$constraintLayoutVersion"
@@ -73,7 +74,7 @@ dependencies {
     implementation "androidx.biometric:biometric:$biometricVersion"
     implementation "androidx.core:core-ktx:$coreKtxVersion"
     implementation "androidx.databinding:databinding-runtime:$agpVersion"
-    implementation "androidx.fragment:fragment:$fragmentVersion"
+    implementation "androidx.fragment:fragment-ktx:$fragmentKtxVersion"
     implementation "androidx.preference:preference:$preferenceVersion"
     implementation "com.google.android.material:material:$materialComponentsVersion"
     implementation "com.journeyapps:zxing-android-embedded:$zxingEmbeddedVersion"
