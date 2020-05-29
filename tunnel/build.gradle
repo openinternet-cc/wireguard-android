@@ -51,6 +51,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:$desugarJdkLibsVersion"
     implementation "androidx.annotation:annotation:$annotationsVersion"
     implementation "androidx.collection:collection:$collectionVersion"
     implementation "com.google.code.findbugs:jsr305:$jsr305Version"
