@@ -24,6 +24,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled = true
     }
     if (keystorePropertiesFile.exists()) {
         final def keystoreProperties = new Properties()
@@ -56,6 +57,7 @@ android {
 
 dependencies {
     implementation project(":tunnel")
+    implementation "androidx.activity:activity-ktx:$activityVersion"
     implementation "androidx.annotation:annotation:$annotationsVersion"
     implementation "androidx.appcompat:appcompat:$appcompatVersion"
     implementation "androidx.constraintlayout:constraintlayout:$constraintLayoutVersion"
@@ -65,11 +67,13 @@ dependencies {
     implementation "androidx.databinding:databinding-runtime:$agpVersion"
     implementation "androidx.fragment:fragment-ktx:$fragmentVersion"
     implementation "androidx.preference:preference-ktx:$preferenceVersion"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleRuntimeKtxVersion"
+    implementation "androidx.datastore:datastore-preferences:$datastoreVersion"
     implementation "com.google.android.material:material:$materialComponentsVersion"
     implementation "com.journeyapps:zxing-android-embedded:$zxingEmbeddedVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutinesVersion"
-    implementation "net.sourceforge.streamsupport:android-retrofuture:$streamsupportVersion"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:$desugarVersion"
 }
 
 tasks.withType(JavaCompile) {

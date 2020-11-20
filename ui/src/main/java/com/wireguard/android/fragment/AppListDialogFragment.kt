@@ -4,24 +4,27 @@
  */
 package com.wireguard.android.fragment
 
+import android.Manifest
 import android.app.Dialog
-import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.os.bundleOf
 import androidx.databinding.Observable
 import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.Fragment
+import androidx.fragment.app.setFragmentResult
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.tabs.TabLayout
-import com.wireguard.android.Application
 import com.wireguard.android.BR
 import com.wireguard.android.R
 import com.wireguard.android.databinding.AppListDialogFragmentBinding
 import com.wireguard.android.databinding.ObservableKeyedArrayList
 import com.wireguard.android.model.ApplicationData
 import com.wireguard.android.util.ErrorMessages
-import com.wireguard.android.util.requireTargetFragment
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AppListDialogFragment : DialogFragment() {
     private val appData = ObservableKeyedArrayList<String, ApplicationData>()
@@ -33,40 +36,42 @@ class AppListDialogFragment : DialogFragment() {
     private fun loadData() {
         val activity = activity ?: return
         val pm = activity.packageManager
-        Application.getAsyncWorker().supplyAsync<List<ApplicationData>> {
-            val launcherIntent = Intent(Intent.ACTION_MAIN, null)
-            launcherIntent.addCategory(Intent.CATEGORY_LAUNCHER)
-            val resolveInfos = pm.queryIntentActivities(launcherIntent, 0)
-            val applicationData: MutableList<ApplicationData> = ArrayList()
-            resolveInfos.forEach {
-                val packageName = it.activityInfo.packageName
-                val appData = ApplicationData(it.loadIcon(pm), it.loadLabel(pm).toString(), packageName, currentlySelectedApps.contains(packageName))
-                applicationData.add(appData)
-                appData.addOnPropertyChangedCallback(object : Observable.OnPropertyChangedCallback() {
-                    override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
-                        if (propertyId == BR.selected)
-                            setButtonText()
+        lifecycleScope.launch(Dispatchers.Default) {
+            try {
+                val applicationData: MutableList<ApplicationData> = ArrayList()
+                withContext(Dispatchers.IO) {
+                    val packageInfos = pm.getPackagesHoldingPermissions(arrayOf(Manifest.permission.INTERNET), 0)
+                    packageInfos.forEach {
+                        val packageName = it.packageName
+                        val appInfo = it.applicationInfo
+                        val appData = ApplicationData(appInfo.loadIcon(pm), appInfo.loadLabel(pm).toString(), packageName, currentlySelectedApps.contains(packageName))
+                        applicationData.add(appData)
+                        appData.addOnPropertyChangedCallback(object : Observable.OnPropertyChangedCallback() {
+                            override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
+                                if (propertyId == BR.selected)
+                                    setButtonText()
+                            }
+                        })
                     }
-                })
-            }
-            applicationData.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
-            applicationData
-        }.whenComplete { data, throwable ->
-            if (data != null) {
-                appData.clear()
-                appData.addAll(data)
-            } else {
-                val error = ErrorMessages[throwable]
-                val message = activity.getString(R.string.error_fetching_apps, error)
-                Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
-                dismissAllowingStateLoss()
+                }
+                applicationData.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+                withContext(Dispatchers.Main.immediate) {
+                    appData.clear()
+                    appData.addAll(applicationData)
+                }
+            } catch (e: Throwable) {
+                withContext(Dispatchers.Main.immediate) {
+                    val error = ErrorMessages[e]
+                    val message = activity.getString(R.string.error_fetching_apps, error)
+                    Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
+                    dismissAllowingStateLoss()
+                }
             }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        require(requireTargetFragment() is AppSelectionListener) { "${requireTargetFragment()} must implement AppSelectionListener" }
         currentlySelectedApps = (arguments?.getStringArrayList(KEY_SELECTED_APPS) ?: emptyList())
         initiallyExcluded = arguments?.getBoolean(KEY_IS_EXCLUDED) ?: true
     }
@@ -123,23 +128,22 @@ class AppListDialogFragment : DialogFragment() {
                 selectedApps.add(data.packageName)
             }
         }
-        (requireTargetFragment() as AppSelectionListener).onSelectedAppsSelected(selectedApps, tabs?.selectedTabPosition == 0)
+        setFragmentResult(REQUEST_SELECTION, bundleOf(
+                KEY_SELECTED_APPS to selectedApps.toTypedArray(),
+                KEY_IS_EXCLUDED to (tabs?.selectedTabPosition == 0)
+        ))
         dismiss()
     }
 
-    interface AppSelectionListener {
-        fun onSelectedAppsSelected(selectedApps: List<String>, isExcluded: Boolean)
-    }
-
     companion object {
-        private const val KEY_SELECTED_APPS = "selected_apps"
-        private const val KEY_IS_EXCLUDED = "is_excluded"
-        fun <T> newInstance(selectedApps: ArrayList<String?>?, isExcluded: Boolean, target: T): AppListDialogFragment where T : Fragment?, T : AppSelectionListener? {
+        const val KEY_SELECTED_APPS = "selected_apps"
+        const val KEY_IS_EXCLUDED = "is_excluded"
+        const val REQUEST_SELECTION = "request_selection"
+        fun newInstance(selectedApps: ArrayList<String?>?, isExcluded: Boolean): AppListDialogFragment {
             val extras = Bundle()
             extras.putStringArrayList(KEY_SELECTED_APPS, selectedApps)
             extras.putBoolean(KEY_IS_EXCLUDED, isExcluded)
             val fragment = AppListDialogFragment()
-            fragment.setTargetFragment(target, 0)
             fragment.arguments = extras
             return fragment
         }

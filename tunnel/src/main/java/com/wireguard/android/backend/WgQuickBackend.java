@@ -32,11 +32,10 @@ import java.util.Objects;
 import java.util.Set;
 
 import androidx.annotation.Nullable;
-import java9.util.stream.Collectors;
-import java9.util.stream.Stream;
 
 /**
- * WireGuard backend that uses {@code wg-quick} to implement tunnel configuration.
+ * Implementation of {@link Backend} that uses the kernel module and {@code wg-quick} to provide
+ * WireGuard tunnels.
  */
 
 @NonNullForAll
@@ -67,7 +66,7 @@ public final class WgQuickBackend implements Backend {
             return Collections.emptySet();
         }
         // wg puts all interface names on the same line. Split them into separate elements.
-        return Stream.of(output.get(0).split(" ")).collect(Collectors.toUnmodifiableSet());
+        return Set.of(output.get(0).split(" "));
     }
 
     @Override

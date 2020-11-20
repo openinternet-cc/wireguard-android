@@ -4,7 +4,6 @@
  */
 package com.wireguard.android.preference
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.system.OsConstants
@@ -15,40 +14,42 @@ import com.wireguard.android.Application
 import com.wireguard.android.R
 import com.wireguard.android.activity.SettingsActivity
 import com.wireguard.android.util.ErrorMessages
+import com.wireguard.android.util.UserKnobs
+import com.wireguard.android.util.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.system.exitProcess
 
 class ModuleDownloaderPreference(context: Context, attrs: AttributeSet?) : Preference(context, attrs) {
     private var state = State.INITIAL
-
     override fun getSummary() = context.getString(state.messageResourceId)
 
     override fun getTitle() = context.getString(R.string.module_installer_title)
 
     override fun onClick() {
         setState(State.WORKING)
-        Application.getAsyncWorker().supplyAsync(Application.getModuleLoader()::download).whenComplete(this::onDownloadResult)
-    }
-
-    @SuppressLint("ApplySharedPref")
-    private fun onDownloadResult(result: Int, throwable: Throwable?) {
-        when {
-            throwable != null -> {
-                setState(State.FAILURE)
-                Toast.makeText(context, ErrorMessages[throwable], Toast.LENGTH_LONG).show()
-            }
-            result == OsConstants.ENOENT -> setState(State.NOTFOUND)
-            result == OsConstants.EXIT_SUCCESS -> {
-                setState(State.SUCCESS)
-                Application.getSharedPreferences().edit().remove("disable_kernel_module").commit()
-                Application.getAsyncWorker().runAsync {
-                    val restartIntent = Intent(context, SettingsActivity::class.java)
-                    restartIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    restartIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    Application.get().startActivity(restartIntent)
-                    exitProcess(0)
+        lifecycleScope.launch {
+            try {
+                when (withContext(Dispatchers.IO) { Application.getModuleLoader().download() }) {
+                    OsConstants.ENOENT -> setState(State.NOTFOUND)
+                    OsConstants.EXIT_SUCCESS -> {
+                        setState(State.SUCCESS)
+                        UserKnobs.setDisableKernelModule(null)
+                        withContext(Dispatchers.IO) {
+                            val restartIntent = Intent(context, SettingsActivity::class.java)
+                            restartIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                            restartIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            Application.get().startActivity(restartIntent)
+                            exitProcess(0)
+                        }
+                    }
+                    else -> setState(State.FAILURE)
                 }
+            } catch (e: Throwable) {
+                setState(State.FAILURE)
+                Toast.makeText(context, ErrorMessages[e], Toast.LENGTH_LONG).show()
             }
-            else -> setState(State.FAILURE)
         }
     }
 

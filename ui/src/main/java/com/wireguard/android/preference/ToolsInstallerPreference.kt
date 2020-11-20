@@ -10,6 +10,10 @@ import androidx.preference.Preference
 import com.wireguard.android.Application
 import com.wireguard.android.R
 import com.wireguard.android.util.ToolsInstaller
+import com.wireguard.android.util.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Preference implementing a button that asynchronously runs `ToolsInstaller` and displays the
@@ -17,37 +21,41 @@ import com.wireguard.android.util.ToolsInstaller
  */
 class ToolsInstallerPreference(context: Context, attrs: AttributeSet?) : Preference(context, attrs) {
     private var state = State.INITIAL
-
     override fun getSummary() = context.getString(state.messageResourceId)
 
     override fun getTitle() = context.getString(R.string.tools_installer_title)
 
     override fun onAttached() {
         super.onAttached()
-        Application.getAsyncWorker().supplyAsync(Application.getToolsInstaller()::areInstalled).whenComplete(this::onCheckResult)
-    }
-
-    private fun onCheckResult(state: Int, throwable: Throwable?) {
-        when {
-            throwable != null || state == ToolsInstaller.ERROR -> setState(State.INITIAL)
-            state and ToolsInstaller.YES == ToolsInstaller.YES -> setState(State.ALREADY)
-            state and (ToolsInstaller.MAGISK or ToolsInstaller.NO) == ToolsInstaller.MAGISK or ToolsInstaller.NO -> setState(State.INITIAL_MAGISK)
-            state and (ToolsInstaller.SYSTEM or ToolsInstaller.NO) == ToolsInstaller.SYSTEM or ToolsInstaller.NO -> setState(State.INITIAL_SYSTEM)
-            else -> setState(State.INITIAL)
+        lifecycleScope.launch {
+            try {
+                val state = withContext(Dispatchers.IO) { Application.getToolsInstaller().areInstalled() }
+                when {
+                    state == ToolsInstaller.ERROR -> setState(State.INITIAL)
+                    state and ToolsInstaller.YES == ToolsInstaller.YES -> setState(State.ALREADY)
+                    state and (ToolsInstaller.MAGISK or ToolsInstaller.NO) == ToolsInstaller.MAGISK or ToolsInstaller.NO -> setState(State.INITIAL_MAGISK)
+                    state and (ToolsInstaller.SYSTEM or ToolsInstaller.NO) == ToolsInstaller.SYSTEM or ToolsInstaller.NO -> setState(State.INITIAL_SYSTEM)
+                    else -> setState(State.INITIAL)
+                }
+            } catch (_: Throwable) {
+                setState(State.INITIAL)
+            }
         }
     }
 
     override fun onClick() {
         setState(State.WORKING)
-        Application.getAsyncWorker().supplyAsync { Application.getToolsInstaller().install() }.whenComplete { result: Int, throwable: Throwable? -> onInstallResult(result, throwable) }
-    }
-
-    private fun onInstallResult(result: Int, throwable: Throwable?) {
-        when {
-            throwable != null -> setState(State.FAILURE)
-            result and (ToolsInstaller.YES or ToolsInstaller.MAGISK) == ToolsInstaller.YES or ToolsInstaller.MAGISK -> setState(State.SUCCESS_MAGISK)
-            result and (ToolsInstaller.YES or ToolsInstaller.SYSTEM) == ToolsInstaller.YES or ToolsInstaller.SYSTEM -> setState(State.SUCCESS_SYSTEM)
-            else -> setState(State.FAILURE)
+        lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { Application.getToolsInstaller().install() }
+                when {
+                    result and (ToolsInstaller.YES or ToolsInstaller.MAGISK) == ToolsInstaller.YES or ToolsInstaller.MAGISK -> setState(State.SUCCESS_MAGISK)
+                    result and (ToolsInstaller.YES or ToolsInstaller.SYSTEM) == ToolsInstaller.YES or ToolsInstaller.SYSTEM -> setState(State.SUCCESS_SYSTEM)
+                    else -> setState(State.FAILURE)
+                }
+            } catch (_: Throwable) {
+                setState(State.FAILURE)
+            }
         }
     }
 

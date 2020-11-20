@@ -10,10 +10,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.app.ActionBar
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.FragmentTransaction
+import androidx.fragment.app.commit
 import com.wireguard.android.R
 import com.wireguard.android.fragment.TunnelDetailFragment
 import com.wireguard.android.fragment.TunnelEditorFragment
@@ -59,16 +58,6 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
         isTwoPaneLayout = findViewById<View?>(R.id.master_detail_wrapper) != null
         supportFragmentManager.addOnBackStackChangedListener(this)
         onBackStackChanged()
-        // Dispatch insets on back stack change
-        // This is required to ensure replaced fragments are also able to consume insets
-        findViewById<View>(R.id.main_activity_container).setOnApplyWindowInsetsListener { _, insets ->
-            supportFragmentManager.addOnBackStackChangedListener {
-                supportFragmentManager.fragments.forEach {
-                    ViewCompat.dispatchApplyWindowInsets(it.requireView(), WindowInsetsCompat.toWindowInsetsCompat(insets))
-                }
-            }
-            insets
-        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -84,11 +73,11 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
                 true
             }
             R.id.menu_action_edit -> {
-                supportFragmentManager.beginTransaction()
-                        .replace(R.id.detail_container, TunnelEditorFragment())
-                        .setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)
-                        .addToBackStack(null)
-                        .commit()
+                supportFragmentManager.commit {
+                    replace(R.id.detail_container, TunnelEditorFragment())
+                    setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)
+                    addToBackStack(null)
+                }
                 true
             }
             // This menu item is handled by the editor fragment.
@@ -116,11 +105,11 @@ class MainActivity : BaseActivity(), FragmentManager.OnBackStackChangedListener 
             fragmentManager.popBackStackImmediate()
         } else if (backStackEntries == 0) {
             // Create and show a new detail fragment.
-            fragmentManager.beginTransaction()
-                    .add(R.id.detail_container, TunnelDetailFragment())
-                    .setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)
-                    .addToBackStack(null)
-                    .commit()
+            fragmentManager.commit {
+                add(R.id.detail_container, TunnelDetailFragment())
+                setTransition(FragmentTransaction.TRANSIT_FRAGMENT_FADE)
+                addToBackStack(null)
+            }
         }
     }
 }

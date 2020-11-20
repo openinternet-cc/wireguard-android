@@ -5,17 +5,20 @@
 package com.wireguard.android.fragment
 
 import android.app.Dialog
-import android.content.Context
 import android.content.DialogInterface
 import android.os.Bundle
 import android.view.inputmethod.InputMethodManager
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.getSystemService
 import androidx.fragment.app.DialogFragment
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.textfield.TextInputEditText
 import com.wireguard.android.Application
 import com.wireguard.android.R
 import com.wireguard.android.databinding.ConfigNamingDialogFragmentBinding
 import com.wireguard.config.BadConfigException
 import com.wireguard.config.Config
+import kotlinx.coroutines.launch
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -26,14 +29,15 @@ class ConfigNamingDialogFragment : DialogFragment() {
     private var imm: InputMethodManager? = null
 
     private fun createTunnelAndDismiss() {
-        binding?.let {
-            val name = it.tunnelNameText.text.toString()
-            Application.getTunnelManager().create(name, config).whenComplete { tunnel, throwable ->
-                if (tunnel != null) {
-                    dismiss()
-                } else {
-                    it.tunnelNameTextLayout.error = throwable.message
-                }
+        val binding = binding ?: return
+        val activity = activity ?: return
+        val name = binding.tunnelNameText.text.toString()
+        activity.lifecycleScope.launch {
+            try {
+                Application.getTunnelManager().create(name, config)
+                dismiss()
+            } catch (e: Throwable) {
+                binding.tunnelNameTextLayout.error = e.message
             }
         }
     }
@@ -49,7 +53,7 @@ class ConfigNamingDialogFragment : DialogFragment() {
         val configBytes = configText!!.toByteArray(StandardCharsets.UTF_8)
         config = try {
             Config.parse(ByteArrayInputStream(configBytes))
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             when (e) {
                 is BadConfigException, is IOException -> throw IllegalArgumentException("Invalid config passed to ${javaClass.simpleName}", e)
                 else -> throw e
@@ -59,7 +63,7 @@ class ConfigNamingDialogFragment : DialogFragment() {
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val activity = requireActivity()
-        imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm = activity.getSystemService()
         val alertDialogBuilder = AlertDialog.Builder(activity)
         alertDialogBuilder.setTitle(R.string.import_from_qr_code)
         binding = ConfigNamingDialogFragmentBinding.inflate(activity.layoutInflater, null, false)
@@ -69,7 +73,18 @@ class ConfigNamingDialogFragment : DialogFragment() {
         }
         alertDialogBuilder.setPositiveButton(R.string.create_tunnel, null)
         alertDialogBuilder.setNegativeButton(R.string.cancel) { _, _ -> dismiss() }
-        return alertDialogBuilder.create()
+        return alertDialogBuilder.create().apply {
+            setOnShowListener {
+                findViewById<TextInputEditText>(R.id.tunnel_name_text)?.apply {
+                    setOnFocusChangeListener { v, _ ->
+                        v.post {
+                            imm?.showSoftInput(v, InputMethodManager.SHOW_IMPLICIT)
+                        }
+                    }
+                    requestFocus()
+                }
+            }
+        }
     }
 
     override fun onResume() {

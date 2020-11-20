@@ -13,7 +13,7 @@ import java.util.Arrays;
 import androidx.annotation.Nullable;
 
 /**
- * Implementation of the Curve25519 elliptic curve algorithm.
+ * Implementation of Curve25519 ECDH.
  * <p>
  * This implementation was imported to WireGuard from noise-java:
  * https://github.com/rweather/noise-java
@@ -28,7 +28,7 @@ import androidx.annotation.Nullable;
  */
 @SuppressWarnings({"MagicNumber", "NonConstantFieldWithUpperCaseName", "SuspiciousNameCombination"})
 @NonNullForAll
-final class Curve25519 {
+public final class Curve25519 {
     // Numbers modulo 2^255 - 19 are broken up into ten 26-bit words.
     private static final int NUM_LIMBS_255BIT = 10;
     private static final int NUM_LIMBS_510BIT = 20;

@@ -5,55 +5,33 @@
 package com.wireguard.android.activity
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.util.SparseArray
 import android.view.MenuItem
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import androidx.fragment.app.commit
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.wireguard.android.Application
 import com.wireguard.android.R
 import com.wireguard.android.backend.WgQuickBackend
+import com.wireguard.android.preference.PreferencesPreferenceDataStore
 import com.wireguard.android.util.AdminKnobs
 import com.wireguard.android.util.ModuleLoader
-import java.util.ArrayList
-import java.util.Arrays
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Interface for changing application-global persistent settings.
  */
 class SettingsActivity : ThemeChangeAwareActivity() {
-    private val permissionRequestCallbacks = SparseArray<(permissions: Array<String>, granted: IntArray) -> Unit>()
-    private var permissionRequestCounter = 0
-
-    fun ensurePermissions(permissions: Array<String>, cb: (permissions: Array<String>, granted: IntArray) -> Unit) {
-        val needPermissions: MutableList<String> = ArrayList(permissions.size)
-        permissions.forEach {
-            if (ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED) {
-                needPermissions.add(it)
-            }
-        }
-        if (needPermissions.isEmpty()) {
-            val granted = IntArray(permissions.size)
-            Arrays.fill(granted, PackageManager.PERMISSION_GRANTED)
-            cb.invoke(permissions, granted)
-            return
-        }
-        val idx = permissionRequestCounter++
-        permissionRequestCallbacks.put(idx, cb)
-        ActivityCompat.requestPermissions(this,
-                needPermissions.toTypedArray(), idx)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (supportFragmentManager.findFragmentById(android.R.id.content) == null) {
-            supportFragmentManager.beginTransaction()
-                    .add(android.R.id.content, SettingsFragment())
-                    .commit()
+            supportFragmentManager.commit {
+                add(android.R.id.content, SettingsFragment())
+            }
         }
     }
 
@@ -65,18 +43,9 @@ class SettingsActivity : ThemeChangeAwareActivity() {
         return super.onOptionsItemSelected(item)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int,
-                                            permissions: Array<String>,
-                                            grantResults: IntArray) {
-        val f = permissionRequestCallbacks[requestCode]
-        if (f != null) {
-            permissionRequestCallbacks.remove(requestCode)
-            f.invoke(permissions, grantResults)
-        }
-    }
-
     class SettingsFragment : PreferenceFragmentCompat() {
         override fun onCreatePreferences(savedInstanceState: Bundle?, key: String?) {
+            preferenceManager.preferenceDataStore = PreferencesPreferenceDataStore(lifecycleScope, Application.getPreferencesDataStore())
             addPreferencesFromResource(R.xml.preferences)
             preferenceScreen.initialExpandedChildrenCount = 4
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -98,8 +67,8 @@ class SettingsActivity : ThemeChangeAwareActivity() {
                     preferenceManager.findPreference<Preference>("multiple_tunnels")
             ).filterNotNull()
             wgQuickOnlyPrefs.forEach { it.isVisible = false }
-            Application.getBackendAsync().thenAccept { backend ->
-                if (backend is WgQuickBackend) {
+            lifecycleScope.launch {
+                if (Application.getBackend() is WgQuickBackend) {
                     ++preferenceScreen.initialExpandedChildrenCount
                     wgQuickOnlyPrefs.forEach { it.isVisible = true }
                 } else {
@@ -115,13 +84,24 @@ class SettingsActivity : ThemeChangeAwareActivity() {
             moduleInstaller?.isVisible = false
             if (ModuleLoader.isModuleLoaded()) {
                 moduleInstaller?.parent?.removePreference(moduleInstaller)
+                lifecycleScope.launch {
+                    if (Application.getBackend() !is WgQuickBackend) {
+                        try {
+                            withContext(Dispatchers.IO) { Application.getRootShell().start() }
+                        } catch (_: Throwable) {
+                            kernelModuleDisabler?.parent?.removePreference(kernelModuleDisabler)
+                        }
+                    }
+                }
             } else {
                 kernelModuleDisabler?.parent?.removePreference(kernelModuleDisabler)
-                Application.getAsyncWorker().runAsync(Application.getRootShell()::start).whenComplete { _, e ->
-                    if (e == null)
+                lifecycleScope.launch {
+                    try {
+                        withContext(Dispatchers.IO) { Application.getRootShell().start() }
                         moduleInstaller?.isVisible = true
-                    else
+                    } catch (_: Throwable) {
                         moduleInstaller?.parent?.removePreference(moduleInstaller)
+                    }
                 }
             }
         }

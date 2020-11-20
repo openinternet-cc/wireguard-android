@@ -25,8 +25,8 @@ import com.wireguard.android.widget.ToggleSwitch
 import com.wireguard.android.widget.ToggleSwitch.OnBeforeCheckedChangeListener
 import com.wireguard.config.Attribute
 import com.wireguard.config.InetNetwork
-import java9.util.Optional
 import java.net.InetAddress
+import java.util.Optional
 
 /**
  * Static methods for use by generated code in the Android data binding library.
@@ -158,7 +158,7 @@ object BindingAdapters {
             return 0
         return try {
             Integer.parseInt(s)
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             0
         }
     }

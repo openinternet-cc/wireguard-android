@@ -51,6 +51,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:background="@null"
+                android:nextFocusDown="@id/public_key_text"
+                android:nextFocusForward="@id/public_key_text"
                 android:onClick="@{() -> item.unbind()}"
                 android:padding="8dp"
                 android:src="@drawable/ic_action_delete"
@@ -73,7 +75,11 @@
                     android:id="@+id/public_key_text"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:imeOptions="actionNext"
                     android:inputType="textNoSuggestions|textVisiblePassword"
+                    android:nextFocusUp="@id/delete"
+                    android:nextFocusDown="@id/pre_shared_key_text"
+                    android:nextFocusForward="@id/pre_shared_key_text"
                     android:text="@={item.publicKey}"
                     app:filter="@{KeyInputFilter.newInstance()}" />
             </com.google.android.material.textfield.TextInputLayout>
@@ -84,16 +90,21 @@
                 android:layout_height="wrap_content"
                 android:layout_margin="4dp"
                 android:hint="@string/pre_shared_key"
+                app:expandedHintEnabled="false"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/public_key_label_layout">
 
-                <com.wireguard.android.widget.MonkeyedTextInputEditText
+                <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/pre_shared_key_text"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="@string/hint_optional"
+                    android:imeOptions="actionNext"
                     android:inputType="textNoSuggestions|textPassword"
+                    android:nextFocusUp="@id/public_key_text"
+                    android:nextFocusDown="@id/persistent_keepalive_text"
+                    android:nextFocusForward="@id/persistent_keepalive_text"
                     android:onClick="@{fragment::onKeyClick}"
                     android:text="@={item.preSharedKey}"
                     app:filter="@{KeyInputFilter.newInstance()}"
@@ -106,18 +117,23 @@
                 android:layout_height="wrap_content"
                 android:layout_margin="4dp"
                 android:hint="@string/persistent_keepalive"
-                app:suffixText="@{@plurals/persistent_keepalive_seconds_suffix(BindingAdapters.tryParseInt(item.persistentKeepalive))}"
+                app:expandedHintEnabled="false"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/pre_shared_key_label_layout">
+                app:layout_constraintTop_toBottomOf="@id/pre_shared_key_label_layout"
+                app:suffixText="@{@plurals/persistent_keepalive_seconds_suffix(BindingAdapters.tryParseInt(item.persistentKeepalive))}">
 
-                <com.wireguard.android.widget.MonkeyedTextInputEditText
+                <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/persistent_keepalive_text"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:hint="@string/hint_optional_discouraged"
+                    android:imeOptions="actionNext"
                     android:inputType="number"
-                    android:text="@={item.persistentKeepalive}"/>
+                    android:nextFocusUp="@id/persistent_keepalive_text"
+                    android:nextFocusDown="@id/endpoint_text"
+                    android:nextFocusForward="@id/endpoint_text"
+                    android:text="@={item.persistentKeepalive}" />
             </com.google.android.material.textfield.TextInputLayout>
 
             <com.google.android.material.textfield.TextInputLayout
@@ -134,7 +150,11 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_alignParentStart="true"
+                    android:imeOptions="actionNext"
                     android:inputType="textNoSuggestions|textVisiblePassword"
+                    android:nextFocusUp="@id/persistent_keepalive_text"
+                    android:nextFocusDown="@id/allowed_ips_text"
+                    android:nextFocusForward="@id/allowed_ips_text"
                     android:text="@={item.endpoint}" />
             </com.google.android.material.textfield.TextInputLayout>
 
@@ -153,7 +173,11 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_alignParentStart="true"
+                    android:imeOptions="actionDone"
                     android:inputType="textNoSuggestions|textVisiblePassword"
+                    android:nextFocusUp="@id/endpoint_text"
+                    android:nextFocusDown="@id/selected_checkbox"
+                    android:nextFocusForward="@id/selected_checkbox"
                     android:text="@={item.allowedIps}" />
             </com.google.android.material.textfield.TextInputLayout>
 
@@ -164,6 +188,8 @@
                 android:layout_marginStart="4dp"
                 android:layout_marginTop="0dp"
                 android:checked="@={item.excludingPrivateIps}"
+                android:nextFocusDown="@id/add_peer_button"
+                android:nextFocusForward="@id/add_peer_button"
                 android:text="@string/exclude_private_ips"
                 android:visibility="@{item.ableToExcludePrivateIps ? View.VISIBLE : View.GONE}"
                 app:layout_constraintEnd_toEndOf="parent"

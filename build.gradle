@@ -1,33 +1,24 @@
-
-allprojects {
-    repositories {
-        google()
-        jcenter()
-    }
-}
-
 buildscript {
     ext {
-        agpVersion = '4.0.1'
+        activityVersion = '1.2.0-beta01'
+        agpVersion = '4.1.0'
         annotationsVersion = '1.1.0'
         appcompatVersion = '1.2.0'
-        bintrayPluginVersion = '1.8.4'
-        biometricVersion = '1.0.1'
+        biometricVersion = '1.1.0-beta01'
         collectionVersion = '1.1.0'
-        constraintLayoutVersion = '2.0.0'
+        constraintLayoutVersion = '2.0.4'
         coordinatorLayoutVersion = '1.1.0'
         coreKtxVersion = '1.3.1'
-        coroutinesVersion = '1.3.9'
-        eddsaVersion = '0.3.0'
-        fragmentVersion = '1.2.5'
+        coroutinesVersion = '1.4.1'
+        datastoreVersion = '1.0.0-alpha02'
+        desugarVersion = '1.0.10'
+        fragmentVersion = '1.3.0-beta01'
         jsr305Version = '3.0.2'
-        junitVersion = '4.13'
-        kotlinVersion = '1.4.0'
-        materialComponentsVersion = '1.3.0-alpha02'
-        mavenPluginVersion = '2.1'
+        junitVersion = '4.13.1'
+        kotlinVersion = '1.4.10'
+        lifecycleRuntimeKtxVersion = '2.3.0-beta01'
+        materialComponentsVersion = '1.3.0-alpha03'
         preferenceVersion = '1.1.1'
-        streamsupportVersion = '1.7.2'
-        threetenabpVersion = '1.2.4'
         zxingEmbeddedVersion = '3.6.0'
 
         groupName = 'com.wireguard.android'
@@ -35,9 +26,47 @@ buildscript {
     dependencies {
         classpath "com.android.tools.build:gradle:$agpVersion"
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
-        classpath "com.github.dcendents:android-maven-gradle-plugin:$mavenPluginVersion"
-        classpath "com.jfrog.bintray.gradle:gradle-bintray-plugin:$bintrayPluginVersion"
     }
+    repositories {
+        google()
+        jcenter()
+    }
+}
+
+plugins {
+    id "de.undercouch.download" version "4.1.1"
+}
+
+task downloadCrowdin(type: Download) {
+	src 'https://crowdin.com/backend/download/project/wireguard.zip'
+	dest file('build/translations.zip')
+	overwrite true
+}
+
+task cleanCrowdin(type: Delete) {
+	delete 'ui/src/main/res/values-*/strings.xml'
+}
+
+task extractCrowdin(type: Copy, dependsOn: ['downloadCrowdin', 'cleanCrowdin']) {
+	mustRunAfter 'downloadCrowdin'
+	from zipTree(file('build/translations.zip'))
+	into file('build/translations')
+	doFirst {
+		delete 'build/translations'
+	}
+}
+
+task crowdin(type: Copy, dependsOn: ['extractCrowdin']) {
+    mustRunAfter 'extractCrowdin'
+    from 'build/translations/wireguard-android/ui/src/main/res'
+    into 'ui/src/main/res/'
+    doLast {
+        delete 'build/translations'
+        delete 'build/translations.zip'
+    }
+}
+
+allprojects {
     repositories {
         google()
         jcenter()
@@ -50,9 +79,9 @@ task clean(type: Delete) {
 
 tasks {
     wrapper {
-        gradleVersion = "6.6"
+        gradleVersion = "6.7"
         distributionType = Wrapper.DistributionType.ALL
-        distributionSha256Sum = "83fa7c3e5ab84c3c5c4a04fb16947338209efa9aab1f6bf09a5d0e3d2ed87742"
+        distributionSha256Sum = "0080de8491f0918e4f529a6db6820fa0b9e818ee2386117f4394f95feb1d5583"
     }
 }
 

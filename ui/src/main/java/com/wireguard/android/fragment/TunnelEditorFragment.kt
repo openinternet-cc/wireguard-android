@@ -18,46 +18,48 @@ import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import com.wireguard.android.Application
 import com.wireguard.android.R
 import com.wireguard.android.backend.Tunnel
 import com.wireguard.android.databinding.TunnelEditorFragmentBinding
-import com.wireguard.android.fragment.AppListDialogFragment.AppSelectionListener
 import com.wireguard.android.model.ObservableTunnel
-import com.wireguard.android.util.BiometricAuthenticator
 import com.wireguard.android.util.AdminKnobs
+import com.wireguard.android.util.BiometricAuthenticator
 import com.wireguard.android.util.ErrorMessages
 import com.wireguard.android.viewmodel.ConfigProxy
-import com.wireguard.android.widget.EdgeToEdge.setUpRoot
-import com.wireguard.android.widget.EdgeToEdge.setUpScrollingContent
 import com.wireguard.config.Config
+import kotlinx.coroutines.launch
 
 /**
  * Fragment for editing a WireGuard configuration.
  */
-class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
+class TunnelEditorFragment : BaseFragment() {
     private var haveShownKeys = false
     private var binding: TunnelEditorFragmentBinding? = null
     private var tunnel: ObservableTunnel? = null
+
     private fun onConfigLoaded(config: Config) {
         binding?.config = ConfigProxy(config)
     }
 
     private fun onConfigSaved(savedTunnel: Tunnel, throwable: Throwable?) {
-        val message: String
+        val ctx = activity ?: Application.get()
         if (throwable == null) {
-            message = getString(R.string.config_save_success, savedTunnel.name)
+            val message = ctx.getString(R.string.config_save_success, savedTunnel.name)
             Log.d(TAG, message)
-            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
             onFinished()
         } else {
             val error = ErrorMessages[throwable]
-            message = getString(R.string.config_save_error, savedTunnel.name, error)
+            val message = ctx.getString(R.string.config_save_error, savedTunnel.name, error)
             Log.e(TAG, message, throwable)
-            binding?.let {
-                Snackbar.make(it.mainContainer, message, Snackbar.LENGTH_LONG).show()
-            }
+            val binding = binding
+            if (binding != null)
+                Snackbar.make(binding.mainContainer, message, Snackbar.LENGTH_LONG).show()
+            else
+                Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -76,8 +78,6 @@ class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
         binding = TunnelEditorFragmentBinding.inflate(inflater, container, false)
         binding?.apply {
             executePendingBindings()
-            setUpRoot(root as ViewGroup)
-            setUpScrollingContent(mainContainer, null)
             privateKeyTextLayout.setEndIconOnClickListener { config?.`interface`?.generateKeyPair() }
         }
         return binding?.root
@@ -89,23 +89,6 @@ class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
         super.onDestroyView()
     }
 
-    override fun onSelectedAppsSelected(selectedApps: List<String>, isExcluded: Boolean) {
-        requireNotNull(binding) { "Tried to set excluded/included apps while no view was loaded" }
-        if (isExcluded) {
-            binding!!.config!!.`interface`.includedApplications.clear()
-            binding!!.config!!.`interface`.excludedApplications.apply {
-                clear()
-                addAll(selectedApps)
-            }
-        } else {
-            binding!!.config!!.`interface`.excludedApplications.clear()
-            binding!!.config!!.`interface`.includedApplications.apply {
-                clear()
-                addAll(selectedApps)
-            }
-        }
-    }
-
     private fun onFinished() {
         // Hide the keyboard; it rarely goes away on its own.
         val activity = activity ?: return
@@ -115,14 +98,11 @@ class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
             inputManager?.hideSoftInputFromWindow(focusedView.windowToken,
                     InputMethodManager.HIDE_NOT_ALWAYS)
         }
-        // Tell the activity to finish itself or go back to the detail view.
-        activity.runOnUiThread {
-            // TODO(smaeul): Remove this hack when fixing the Config ViewModel
-            // The selected tunnel has to actually change, but we have to remember this one.
-            val savedTunnel = tunnel
-            if (savedTunnel === selectedTunnel) selectedTunnel = null
-            selectedTunnel = savedTunnel
-        }
+        parentFragmentManager.popBackStackImmediate()
+
+        // If we just made a new one, save it to select the details page.
+        if (selectedTunnel != tunnel)
+            selectedTunnel = tunnel
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -130,7 +110,7 @@ class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
             binding ?: return false
             val newConfig = try {
                 binding!!.config!!.resolve()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 val error = ErrorMessages[e]
                 val tunnelName = if (tunnel == null) binding!!.name else tunnel!!.name
                 val message = getString(R.string.config_save_error, tunnelName, error)
@@ -138,20 +118,36 @@ class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
                 Snackbar.make(binding!!.mainContainer, error, Snackbar.LENGTH_LONG).show()
                 return false
             }
-            when {
-                tunnel == null -> {
-                    Log.d(TAG, "Attempting to create new tunnel " + binding!!.name)
-                    val manager = Application.getTunnelManager()
-                    manager.create(binding!!.name!!, newConfig).whenComplete(this::onTunnelCreated)
-                }
-                tunnel!!.name != binding!!.name -> {
-                    Log.d(TAG, "Attempting to rename tunnel to " + binding!!.name)
-                    tunnel!!.setNameAsync(binding!!.name!!).whenComplete { _, t -> onTunnelRenamed(tunnel!!, newConfig, t) }
-                }
-                else -> {
-                    Log.d(TAG, "Attempting to save config of " + tunnel!!.name)
-                    tunnel!!.setConfigAsync(newConfig)
-                            .whenComplete { _, t -> onConfigSaved(tunnel!!, t) }
+            val activity = requireActivity()
+            activity.lifecycleScope.launch {
+                when {
+                    tunnel == null -> {
+                        Log.d(TAG, "Attempting to create new tunnel " + binding!!.name)
+                        val manager = Application.getTunnelManager()
+                        try {
+                            onTunnelCreated(manager.create(binding!!.name!!, newConfig), null)
+                        } catch (e: Throwable) {
+                            onTunnelCreated(null, e)
+                        }
+                    }
+                    tunnel!!.name != binding!!.name -> {
+                        Log.d(TAG, "Attempting to rename tunnel to " + binding!!.name)
+                        try {
+                            tunnel!!.setNameAsync(binding!!.name!!)
+                            onTunnelRenamed(tunnel!!, newConfig, null)
+                        } catch (e: Throwable) {
+                            onTunnelRenamed(tunnel!!, newConfig, e)
+                        }
+                    }
+                    else -> {
+                        Log.d(TAG, "Attempting to save config of " + tunnel!!.name)
+                        try {
+                            tunnel!!.setConfigAsync(newConfig)
+                            onConfigSaved(tunnel!!, null)
+                        } catch (e: Throwable) {
+                            onConfigSaved(tunnel!!, e)
+                        }
+                    }
                 }
             }
             return true
@@ -169,8 +165,26 @@ class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
                 if (selectedApps.isNotEmpty())
                     isExcluded = false
             }
-            val fragment = AppListDialogFragment.newInstance(selectedApps, isExcluded, this)
-            fragment.show(parentFragmentManager, null)
+            val fragment = AppListDialogFragment.newInstance(selectedApps, isExcluded)
+            childFragmentManager.setFragmentResultListener(AppListDialogFragment.REQUEST_SELECTION, viewLifecycleOwner) { _, bundle ->
+                requireNotNull(binding) { "Tried to set excluded/included apps while no view was loaded" }
+                val newSelections = requireNotNull(bundle.getStringArray(AppListDialogFragment.KEY_SELECTED_APPS))
+                val excluded = requireNotNull(bundle.getBoolean(AppListDialogFragment.KEY_IS_EXCLUDED))
+                if (excluded) {
+                    binding!!.config!!.`interface`.includedApplications.clear()
+                    binding!!.config!!.`interface`.excludedApplications.apply {
+                        clear()
+                        addAll(newSelections)
+                    }
+                } else {
+                    binding!!.config!!.`interface`.excludedApplications.clear()
+                    binding!!.config!!.`interface`.includedApplications.apply {
+                        clear()
+                        addAll(newSelections)
+                    }
+                }
+            }
+            fragment.show(childFragmentManager, null)
         }
     }
 
@@ -187,46 +201,60 @@ class TunnelEditorFragment : BaseFragment(), AppSelectionListener {
         binding!!.config = ConfigProxy()
         if (tunnel != null) {
             binding!!.name = tunnel!!.name
-            tunnel!!.configAsync.thenAccept(this::onConfigLoaded)
+            lifecycleScope.launch {
+                try {
+                    onConfigLoaded(tunnel!!.getConfigAsync())
+                } catch (_: Throwable) {
+                }
+            }
         } else {
             binding!!.name = ""
         }
     }
 
-    private fun onTunnelCreated(newTunnel: ObservableTunnel, throwable: Throwable?) {
-        val message: String
+    private fun onTunnelCreated(newTunnel: ObservableTunnel?, throwable: Throwable?) {
+        val ctx = activity ?: Application.get()
         if (throwable == null) {
             tunnel = newTunnel
-            message = getString(R.string.tunnel_create_success, tunnel!!.name)
+            val message = ctx.getString(R.string.tunnel_create_success, tunnel!!.name)
             Log.d(TAG, message)
-            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+            Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
             onFinished()
         } else {
             val error = ErrorMessages[throwable]
-            message = getString(R.string.tunnel_create_error, error)
+            val message = ctx.getString(R.string.tunnel_create_error, error)
             Log.e(TAG, message, throwable)
-            binding?.let {
-                Snackbar.make(it.mainContainer, message, Snackbar.LENGTH_LONG).show()
-            }
+            val binding = binding
+            if (binding != null)
+                Snackbar.make(binding.mainContainer, message, Snackbar.LENGTH_LONG).show()
+            else
+                Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun onTunnelRenamed(renamedTunnel: ObservableTunnel, newConfig: Config,
-                                throwable: Throwable?) {
-        val message: String
+    private suspend fun onTunnelRenamed(renamedTunnel: ObservableTunnel, newConfig: Config,
+                                        throwable: Throwable?) {
+        val ctx = activity ?: Application.get()
         if (throwable == null) {
-            message = getString(R.string.tunnel_rename_success, renamedTunnel.name)
+            val message = ctx.getString(R.string.tunnel_rename_success, renamedTunnel.name)
             Log.d(TAG, message)
             // Now save the rest of configuration changes.
             Log.d(TAG, "Attempting to save config of renamed tunnel " + tunnel!!.name)
-            renamedTunnel.setConfigAsync(newConfig).whenComplete { _, t -> onConfigSaved(renamedTunnel, t) }
+            try {
+                renamedTunnel.setConfigAsync(newConfig)
+                onConfigSaved(renamedTunnel, null)
+            } catch (e: Throwable) {
+                onConfigSaved(renamedTunnel, e)
+            }
         } else {
             val error = ErrorMessages[throwable]
-            message = getString(R.string.tunnel_rename_error, error)
+            val message = ctx.getString(R.string.tunnel_rename_error, error)
             Log.e(TAG, message, throwable)
-            binding?.let {
-                Snackbar.make(it.mainContainer, message, Snackbar.LENGTH_LONG).show()
-            }
+            val binding = binding
+            if (binding != null)
+                Snackbar.make(binding.mainContainer, message, Snackbar.LENGTH_LONG).show()
+            else
+                Toast.makeText(ctx, message, Toast.LENGTH_SHORT).show()
         }
     }
 

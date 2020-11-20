@@ -19,13 +19,17 @@ import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ShareCompat
+import androidx.core.content.res.ResourcesCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -36,13 +40,8 @@ import com.wireguard.android.R
 import com.wireguard.android.databinding.LogViewerActivityBinding
 import com.wireguard.android.util.DownloadsFileSaver
 import com.wireguard.android.util.ErrorMessages
-import com.wireguard.android.widget.EdgeToEdge.setUpFAB
-import com.wireguard.android.widget.EdgeToEdge.setUpRoot
-import com.wireguard.android.widget.EdgeToEdge.setUpScrollingContent
 import com.wireguard.crypto.KeyPair
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -60,33 +59,26 @@ import java.util.regex.Matcher
 import java.util.regex.Pattern
 
 class LogViewerActivity : AppCompatActivity() {
-
     private lateinit var binding: LogViewerActivityBinding
     private lateinit var logAdapter: LogEntryAdapter
     private var logLines = arrayListOf<LogLine>()
     private var rawLogLines = StringBuffer()
     private var recyclerView: RecyclerView? = null
     private var saveButton: MenuItem? = null
-    private val coroutineScope = CoroutineScope(Dispatchers.Default)
     private val year by lazy {
         val yearFormatter: DateFormat = SimpleDateFormat("yyyy", Locale.US)
         yearFormatter.format(Date())
     }
 
-    @Suppress("Deprecation")
-    private val defaultColor by lazy { resources.getColor(R.color.primary_text_color) }
+    private val defaultColor by lazy { ResourcesCompat.getColor(resources, R.color.primary_text_color, theme) }
 
-    @Suppress("Deprecation")
-    private val debugColor by lazy { resources.getColor(R.color.debug_tag_color) }
+    private val debugColor by lazy { ResourcesCompat.getColor(resources, R.color.debug_tag_color, theme) }
 
-    @Suppress("Deprecation")
-    private val errorColor by lazy { resources.getColor(R.color.error_tag_color) }
+    private val errorColor by lazy { ResourcesCompat.getColor(resources, R.color.error_tag_color, theme) }
 
-    @Suppress("Deprecation")
-    private val infoColor by lazy { resources.getColor(R.color.info_tag_color) }
+    private val infoColor by lazy { ResourcesCompat.getColor(resources, R.color.info_tag_color, theme) }
 
-    @Suppress("Deprecation")
-    private val warningColor by lazy { resources.getColor(R.color.warning_tag_color) }
+    private val warningColor by lazy { ResourcesCompat.getColor(resources, R.color.warning_tag_color, theme) }
 
     private var lastUri: Uri? = null
 
@@ -103,9 +95,6 @@ class LogViewerActivity : AppCompatActivity() {
         binding = LogViewerActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        setUpFAB(binding.shareFab)
-        setUpRoot(binding.root)
-        setUpScrollingContent(binding.recyclerView, binding.shareFab)
         logAdapter = LogEntryAdapter()
         binding.recyclerView.apply {
             recyclerView = this
@@ -114,7 +103,11 @@ class LogViewerActivity : AppCompatActivity() {
             addItemDecoration(DividerItemDecoration(context, LinearLayoutManager.VERTICAL))
         }
 
-        coroutineScope.launch { streamingLog() }
+        lifecycleScope.launch(Dispatchers.IO) { streamingLog() }
+
+        val revokeLastActivityResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            revokeLastUri()
+        }
 
         binding.shareFab.setOnClickListener {
             revokeLastUri()
@@ -129,15 +122,8 @@ class LogViewerActivity : AppCompatActivity() {
                     .createChooserIntent()
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             grantUriPermission("android", lastUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            startActivityForResult(shareIntent, SHARE_ACTIVITY_REQUEST)
+            revokeLastActivityResultLauncher.launch(shareIntent)
         }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == SHARE_ACTIVITY_REQUEST) {
-            revokeLastUri()
-        }
-        super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -153,93 +139,90 @@ class LogViewerActivity : AppCompatActivity() {
                 true
             }
             R.id.save_log -> {
-                coroutineScope.launch { saveLog() }
+                saveButton?.isEnabled = false
+                lifecycleScope.launch { saveLog() }
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        coroutineScope.cancel()
-    }
+    private val downloadsFileSaver = DownloadsFileSaver(this)
 
     private suspend fun saveLog() {
-        val context = this
-        withContext(Dispatchers.Main) {
-            saveButton?.isEnabled = false
-            withContext(Dispatchers.IO) {
-                var exception: Throwable? = null
-                var outputFile: DownloadsFileSaver.DownloadsFile? = null
-                try {
-                    outputFile = DownloadsFileSaver.save(context, "wireguard-log.txt", "text/plain", true)
-                    outputFile.outputStream.use {
-                        it.write(rawLogLines.toString().toByteArray(Charsets.UTF_8))
-                    }
-                } catch (e: Throwable) {
-                    outputFile?.delete()
-                    exception = e
-                }
-                withContext(Dispatchers.Main) {
-                    saveButton?.isEnabled = true
-                    Snackbar.make(findViewById(android.R.id.content),
-                            if (exception == null) getString(R.string.log_export_success, outputFile?.fileName)
-                            else getString(R.string.log_export_error, ErrorMessages[exception]),
-                            if (exception == null) Snackbar.LENGTH_SHORT else Snackbar.LENGTH_LONG)
-                            .setAnchorView(binding.shareFab)
-                            .show()
-                }
+        var exception: Throwable? = null
+        var outputFile: DownloadsFileSaver.DownloadsFile? = null
+        withContext(Dispatchers.IO) {
+            try {
+                outputFile = downloadsFileSaver.save("wireguard-log.txt", "text/plain", true)
+                outputFile?.outputStream?.write(rawLogLines.toString().toByteArray(Charsets.UTF_8))
+            } catch (e: Throwable) {
+                outputFile?.delete()
+                exception = e
             }
         }
+        saveButton?.isEnabled = true
+        if (outputFile == null)
+            return
+        Snackbar.make(findViewById(android.R.id.content),
+                if (exception == null) getString(R.string.log_export_success, outputFile?.fileName)
+                else getString(R.string.log_export_error, ErrorMessages[exception]),
+                if (exception == null) Snackbar.LENGTH_SHORT else Snackbar.LENGTH_LONG)
+                .setAnchorView(binding.shareFab)
+                .show()
     }
 
     private suspend fun streamingLog() = withContext(Dispatchers.IO) {
         val builder = ProcessBuilder().command("logcat", "-b", "all", "-v", "threadtime", "*:V")
         builder.environment()["LC_ALL"] = "C"
-        val process = try {
-            builder.start()
-        } catch (e: IOException) {
-            e.printStackTrace()
-            return@withContext
-        }
-        val stdout = BufferedReader(InputStreamReader(process!!.inputStream, StandardCharsets.UTF_8))
-        var haveScrolled = false
-        val start = System.nanoTime()
-        var startPeriod = start
-        while (true) {
-            val line = stdout.readLine() ?: break
-            rawLogLines.append(line)
-            rawLogLines.append('\n')
-            val logLine = parseLine(line)
-            withContext(Dispatchers.Main) {
-                if (logLine != null) {
-                    recyclerView?.let {
-                        val shouldScroll = haveScrolled && !it.canScrollVertically(1)
-                        logLines.add(logLine)
+        var process: Process? = null
+        try {
+            process = try {
+                builder.start()
+            } catch (e: IOException) {
+                Log.e(TAG, Log.getStackTraceString(e))
+                return@withContext
+            }
+            val stdout = BufferedReader(InputStreamReader(process!!.inputStream, StandardCharsets.UTF_8))
+            var haveScrolled = false
+            val start = System.nanoTime()
+            var startPeriod = start
+            while (true) {
+                val line = stdout.readLine() ?: break
+                rawLogLines.append(line)
+                rawLogLines.append('\n')
+                val logLine = parseLine(line)
+                withContext(Dispatchers.Main.immediate) {
+                    if (logLine != null) {
+                        recyclerView?.let {
+                            val shouldScroll = haveScrolled && !it.canScrollVertically(1)
+                            logLines.add(logLine)
+                            if (haveScrolled) logAdapter.notifyDataSetChanged()
+                            if (shouldScroll)
+                                it.scrollToPosition(logLines.size - 1)
+                        }
+                    } else {
+                        /* TODO: I'd prefer for the next line to be:
+                         * logLines.lastOrNull()?.msg += "\n$line"
+                         * However, as of writing, that causes the kotlin compiler to freak out and crash, spewing bytecode.
+                         */
+                        logLines.lastOrNull()?.apply { msg += "\n$line" }
                         if (haveScrolled) logAdapter.notifyDataSetChanged()
-                        if (shouldScroll)
-                            it.scrollToPosition(logLines.size - 1)
                     }
-                } else {
-                    /* I'd prefer for the next line to be:
-                     *    logLines.lastOrNull()?.msg += "\n$line"
-                     * However, as of writing, that causes the kotlin compiler to freak out and crash, spewing bytecode.
-                     */
-                    logLines.lastOrNull()?.apply { msg += "\n$line" }
-                    if (haveScrolled) logAdapter.notifyDataSetChanged()
-                }
-                if (!haveScrolled) {
-                    val end = System.nanoTime()
-                    val scroll = (end - start) > 1000000000L * 2.5 || !stdout.ready()
-                    if (logLines.isNotEmpty() && (scroll || (end - startPeriod) > 1000000000L / 4)) {
-                        logAdapter.notifyDataSetChanged()
-                        recyclerView?.scrollToPosition(logLines.size - 1)
-                        startPeriod = end
+                    if (!haveScrolled) {
+                        val end = System.nanoTime()
+                        val scroll = (end - start) > 1000000000L * 2.5 || !stdout.ready()
+                        if (logLines.isNotEmpty() && (scroll || (end - startPeriod) > 1000000000L / 4)) {
+                            logAdapter.notifyDataSetChanged()
+                            recyclerView?.scrollToPosition(logLines.size - 1)
+                            startPeriod = end
+                        }
+                        if (scroll) haveScrolled = true
                     }
-                    if (scroll) haveScrolled = true
                 }
             }
+        } finally {
+            process?.destroy()
         }
     }
 
@@ -271,7 +254,7 @@ class LogViewerActivity : AppCompatActivity() {
          */
         private val THREADTIME_LINE: Pattern = Pattern.compile("^(\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}.\\d{3})(?:\\s+[0-9A-Za-z]+)?\\s+(\\d+)\\s+(\\d+)\\s+([A-Z])\\s+(.+?)\\s*: (.*)$")
         private val LOGS: MutableMap<String, ByteArray> = ConcurrentHashMap()
-        private const val SHARE_ACTIVITY_REQUEST = 49133
+        private const val TAG = "WireGuard/LogViewerActivity"
     }
 
     private inner class LogEntryAdapter : RecyclerView.Adapter<LogEntryAdapter.ViewHolder>() {
@@ -348,7 +331,7 @@ class LogViewerActivity : AppCompatActivity() {
             return openPipeHelper(uri, "text/plain", null, log) { output, _, _, _, l ->
                 try {
                     FileOutputStream(output.fileDescriptor).write(l!!)
-                } catch (_: Exception) {
+                } catch (_: Throwable) {
                 }
             }
         }
